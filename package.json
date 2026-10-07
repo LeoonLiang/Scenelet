@@ -1,0 +1,86 @@
+{
+  "name": "framewall",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Scenelet · 拾景 — photography wallpapers for your desktop",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist": "npm run build && electron-builder",
+    "release:check": "node scripts/check-release.cjs",
+    "release:prepare": "node scripts/prepare-release.cjs",
+    "release:tag": "node scripts/tag-release.cjs",
+    "release:build": "npm run build && node scripts/build-release.cjs",
+    "site:publish": "git subtree push --prefix site origin gh-pages"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.3",
+    "vite": "^8.3.3"
+  },
+  "build": {
+    "appId": "studio.framewall.desktop",
+    "productName": "Scenelet",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-windows-${arch}-portable.${ext}",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.photography",
+      "artifactName": "${productName}-${version}-macos-${arch}-app.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-${version}-windows-${arch}-setup.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-macos-${arch}-installer.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "LeoonLiang",
+        "repo": "Scenelet",
+        "channel": "latest-x64",
+        "releaseType": "draft"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeoonLiang/Scenelet.git"
+  },
+  "author": "LeoonLiang"
+}

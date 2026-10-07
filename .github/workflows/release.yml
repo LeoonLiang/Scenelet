@@ -1,0 +1,105 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, e.g. v0.5.0
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            platform: win32
+            arch: x64
+          - os: windows-2025
+            platform: win32
+            arch: arm64
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - os: macos-15
+            platform: darwin
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Validate tag and changelog
+        run: node scripts/check-release.cjs "$env:RELEASE_TAG"
+        if: runner.os == 'Windows'
+      - name: Validate tag and changelog
+        run: node scripts/check-release.cjs "$RELEASE_TAG"
+        if: runner.os != 'Windows'
+      - run: node scripts/build-release.cjs ${{ matrix.platform }} ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            release/**/Scenelet-*.exe
+            release/**/Scenelet-*.dmg
+            release/**/Scenelet-*.zip
+            release/**/latest-*.yml
+            release/**/*.blockmap
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: packages
+      - name: Collect release assets
+        run: |
+          mkdir -p publish
+          find packages -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.yml' -o -name '*.blockmap' \) -exec cp {} publish/ \;
+          node scripts/check-release.cjs "$RELEASE_TAG" release-notes.md
+          (cd publish && sha256sum *.exe *.dmg *.zip > SHA256SUMS.txt)
+      - name: Create draft, never overwrite published release assets
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > draft-state.txt 2>/dev/null; then
+            test "$(cat draft-state.txt)" = true || { echo 'Published releases are immutable'; exit 1; }
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "拾景 Scenelet $RELEASE_TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" publish/* --clobber
+      - name: Remove temporary build artifacts after successful release upload
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[] | select(.name | startswith("packages-")) | .id' > artifact-ids.txt
+          while read -r id; do gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"; done < artifact-ids.txt

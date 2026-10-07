@@ -1,0 +1,15 @@
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const next = process.argv[2];
+const { newer, version } = require('../electron/update-core.cjs');
+const pkg = require('../package.json');
+if (!version(next) || next.startsWith('v') || !newer(next, pkg.version)) throw new Error('Provide a newer stable version, e.g. npm run release:prepare -- 0.6.0');
+const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
+if (dirty) throw new Error('Commit current changes before preparing a release.');
+pkg.version = next; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+const lock = JSON.parse(fs.readFileSync('package-lock.json')); lock.version = next; lock.packages[''].version = next; fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+fs.writeFileSync('src/version.ts', `export const appVersion = '${next}';\n`);
+const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+const marker = changelog.indexOf('\n## '); if (marker < 0) throw new Error('CHANGELOG format missing sections');
+fs.writeFileSync('CHANGELOG.md', changelog.slice(0, marker) + `\n## [${next}] - ${new Date().toISOString().slice(0, 10)}\n\n### Added\n\n- TODO: 填写本次功能、修复及兼容性说明。\n` + changelog.slice(marker));
+console.log(`Prepared ${next}. Edit CHANGELOG.md, run npm test and npm run build, commit, then run npm run release:tag.`);
