@@ -8,6 +8,8 @@
 
 临时 Actions 构建产物保留一天，Release 上传成功后自动清理；正式 Release 资产保留。已公开的 Release 不允许工作流覆盖资产，修复请发布新的版本号。
 
+版本号采用 `主版本.次版本.修订号`：修复问题增加修订号（例如 `0.5.1`），新增兼容功能增加次版本（例如 `0.6.0`）；稳定的首个完整版本使用 `1.0.0`，以后不兼容的变化增加主版本。每个版本对应唯一的 `vX.Y.Z` Tag 和一条 Changelog。测试版可另用预发布 Release，但当前脚本只发布稳定版本，客户端也只检查稳定版本。
+
 每次发版：
 
 ```sh
@@ -87,5 +89,7 @@ npm run site:publish
 ```
 
 首次启用：仓库 **Settings → Pages → Deploy from a branch → gh-pages → /(root)**。预期地址为 `https://leoonliang.github.io/Scenelet/`；仅推送站点分支不会自动开启 Pages，此设置由仓库维护者完成。
+
+当前仓库已有上述 Pages 配置，介绍页已经部署到 [在线介绍页](https://leoonliang.github.io/Scenelet/)。更新站点分支会触发 GitHub 的 Pages 构建，无需在应用发版时重新部署页面。
 
 下载页读取 GitHub 最新正式 Release 的实际资产，默认推荐安装版。草稿、预发布和不存在的附件不会被推荐；网络失败时退回 Releases 页面。浏览器无法准确识别 Mac 芯片时需要用户选择，不通过图形渲染器猜测硬件。
