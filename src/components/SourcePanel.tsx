@@ -4,6 +4,7 @@ import type { OnlineSource } from '../types';
 import { tags } from '../data';
 import { isLocalKind, kindLabel, sourceName } from '../lib/sources';
 import { t, type MessageKey } from '../i18n';
+import SelectField from './SelectField';
 
 type Props = {
   draft: OnlineSource; setDraft: (s: OnlineSource | ((s: OnlineSource) => OnlineSource)) => void;
@@ -47,12 +48,9 @@ export default function SourcePanel({ draft, setDraft, savedSources, favorites, 
         })}
       </div>
       <div className="filter-grid">
-        <label className="field">
-          <span>{t('source.mode')}</span>
-          <select value={draft.kind} onChange={e => setDraft({ kind: e.target.value, value: '', name: '' })}>
-            <option value="search">{t('source.mode.search')}</option><option value="topic">{t('source.mode.topic')}</option><option value="discover">{t('source.mode.discover')}</option>
-          </select>
-        </label>
+        <SelectField label={t('source.mode')} value={draft.kind} disabled={busy}
+          onValueChange={kind => setDraft({ kind, value: '', name: '' })}
+          options={(['search', 'topic', 'discover'] as const).map(value => ({ value, label: t(`source.mode.${value}`) }))}/>
         {draft.kind !== 'discover' && <label className="field wide">
           <span>{t(draft.kind === 'topic' ? 'source.topicField' : 'source.keywordField')}</span>
           <input value={draft.value} onChange={e => setDraft(s => ({ ...s, value: e.target.value, name: '' }))} placeholder={t(draft.kind === 'topic' ? 'source.topicPlaceholder' : 'source.keywordPlaceholder')}/>

@@ -324,6 +324,7 @@ function registerIPC() {
     'update-status': () => updates.get(),
     'check-update': () => updates.check(),
     'install-update': () => updates.install(),
+    'open-downloaded-update': () => updates.openDownloaded(),
     'open-update': async () => shell.openExternal(updateCore.trustedReleaseUrl(updates.get().url)),
     bootstrap: () => snapshot(), query, connect,
     credential: () => key,
@@ -369,7 +370,7 @@ else {
     if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
     tray = new Tray(trayIcon());
     tray.on('double-click', () => { win.show(); win.focus(); });
-    updates = require('./updater.cjs')({ app, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error(__("err.installBusy")); await saveQueue; closing = true; clearInterval(timer); } });
+    updates = require('./updater.cjs')({ app, shell, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error(__("err.installBusy")); await saveQueue; closing = true; clearInterval(timer); } });
     registerIPC(); schedule(); updates.start();
     if (dev) await win.loadURL('http://127.0.0.1:5173'); else await win.loadFile(path.join(__dirname, '../dist/index.html'));
     if (smoke) {

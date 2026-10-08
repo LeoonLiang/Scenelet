@@ -1,6 +1,6 @@
 export type Photo = { id: string; source: 'local' | 'unsplash' | 'demo'; title: string; width: number; height: number; thumb: string; full: string; color?: string; author: string; username?: string; link?: string; authorUrl?: string; createdAt?: string };
 export type OnlineSource = { kind: string; value: string; name: string };
-export type UpdateStatus = { mode: 'automatic' | 'manual' | 'disabled'; state: 'idle' | 'checking' | 'current' | 'downloading' | 'available' | 'ready' | 'error'; currentVersion: string; version: string; percent: number; message: string; url: string };
+export type UpdateStatus = { mode: 'automatic' | 'manual' | 'disabled'; state: 'idle' | 'checking' | 'current' | 'downloading' | 'available' | 'downloaded' | 'ready' | 'error'; currentVersion: string; version: string; percent: number; message: string; url: string; packageType?: 'dmg' | 'zip' };
 export type Settings = { language: 'system' | 'zh' | 'en'; interval: number; rotation: boolean; order: string; rotationSource: string; fit: string; autostart: boolean; minimizeToTray: boolean; quality: string; cacheLimit: number; orientation: string; minWidth: number; onlineSource: OnlineSource };
 export type Playlist = { id: string; name: string; photoIds: string[] };
 export type AppState = { photos: Photo[]; favorites: string[]; playlists: Playlist[]; history: { id: string; appliedAt: string }[]; current: { id: string; appliedAt: string } | null; settings: Settings; connected: boolean; desktop: boolean; platform: string; screens: { id: number; width: number; height: number; primary: boolean }[]; error?: string; importFailed?: number };
@@ -10,6 +10,7 @@ export interface DesktopAPI {
   updateStatus(): Promise<UpdateStatus>;
   checkUpdate(): Promise<UpdateStatus>;
   installUpdate(): Promise<void>;
+  openDownloadedUpdate(): Promise<void>;
   openUpdate(): Promise<void>;
   onUpdater(callback: (status: UpdateStatus) => void): () => void;
   bootstrap(): Promise<AppState>;

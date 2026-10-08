@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Settings } from '../types';
 import type { Theme } from '../lib/sources';
 import UpdatePanel from '../components/UpdatePanel';
+import SelectField from '../components/SelectField';
 import { languages, t, type MessageKey } from '../i18n';
 
 type Props = {
@@ -21,21 +22,15 @@ export default function SettingsPage({ settings, busy, cache, theme, setTheme, h
     <section className="panel">
       <header className="panel-head"><h2>{t('settings.desktop')}</h2><p>{t('settings.desktopDesc')}</p></header>
       <div className="filter-grid">
-        <label className="field"><span>{t('settings.fit')}</span>
-          <select value={settings.fit} disabled={busy} onChange={e => onChange({ fit: e.target.value })}>
-            {(['fill', 'fit', 'stretch', 'center'] as const).map(v => <option key={v} value={v}>{t(`settings.fit.${v}`)}</option>)}
-          </select>
-        </label>
-        <label className="field"><span>{t('settings.quality')}</span>
-          <select value={settings.quality} disabled={busy} onChange={e => onChange({ quality: e.target.value })}>
-            <option value="1920">1920 px</option><option value="2560">2560 px</option><option value="3840">3840 px</option>
-          </select>
-        </label>
-        <label className="field"><span>{t('settings.cacheLimit')}</span>
-          <select value={settings.cacheLimit} disabled={busy} onChange={e => onChange({ cacheLimit: Number(e.target.value) })}>
-            {[256, 512, 1024, 2048].map(v => <option key={v} value={v}>{v} MB</option>)}
-          </select>
-        </label>
+        <SelectField label={t('settings.fit')} value={settings.fit} disabled={busy}
+          onValueChange={fit => onChange({ fit })}
+          options={(['fill', 'fit', 'stretch', 'center'] as const).map(value => ({ value, label: t(`settings.fit.${value}`) }))}/>
+        <SelectField label={t('settings.quality')} value={settings.quality} disabled={busy}
+          onValueChange={quality => onChange({ quality })}
+          options={['1920', '2560', '3840'].map(value => ({ value, label: `${value} px` }))}/>
+        <SelectField label={t('settings.cacheLimit')} value={String(settings.cacheLimit)} disabled={busy}
+          onValueChange={value => onChange({ cacheLimit: Number(value) })}
+          options={[256, 512, 1024, 2048].map(value => ({ value: String(value), label: `${value} MB` }))}/>
       </div>
       <div className="rows">
         <div className="row">

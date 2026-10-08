@@ -150,6 +150,8 @@ const zh = {
   'update.check': '检查更新',
   'update.install': '重启并安装',
   'update.download': '下载新版',
+  'update.openInstaller': '打开安装包',
+  'update.showDownload': '显示下载文件',
   'update.releases': '查看发行版本',
 
   'key.title': '连接 Unsplash',
