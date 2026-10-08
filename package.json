@@ -49,6 +49,7 @@
         "zip"
       ],
       "artifactName": "${productName}-${version}-windows-${arch}-portable.${ext}",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "mac": {
@@ -57,6 +58,7 @@
         "zip"
       ],
       "category": "public.app-category.photography",
+      "icon": "build/icon.icns",
       "artifactName": "${productName}-${version}-macos-${arch}-app.${ext}"
     },
     "nsis": {

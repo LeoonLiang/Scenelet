@@ -223,6 +223,15 @@ async function saveSettings(input) {
   }
   state.settings = settings; await save(); schedule(); publish(warning); return snapshot();
 }
+// macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
+// Windows tray: full-color icon. Both load 1x and 2x explicitly so packaged (asar) builds stay sharp on HiDPI screens.
+function trayIcon() {
+  const name = process.platform === 'darwin' ? 'trayTemplate' : 'tray';
+  const image = nativeImage.createEmpty();
+  for (const [scaleFactor, suffix] of [[1, ''], [2, '@2x']]) image.addRepresentation({ scaleFactor, buffer: require('node:fs').readFileSync(path.join(__dirname, 'assets', `${name}${suffix}.png`)) });
+  if (process.platform === 'darwin') image.setTemplateImage(true);
+  return image;
+}
 function updateTray() {
   if (!tray) return;
   tray.setToolTip(`拾景 Scenelet${state.settings.rotation ? ' · 自动轮换中' : ''}`);
@@ -275,11 +284,12 @@ else {
     state.photos.forEach(p => { known.set(p.id, p); if (p.source === 'local') imported.set(p.id, p.localPath); });
     try { if (safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(await fs.readFile(path.join(app.getPath('userData'), 'credential.bin'))); } catch {}
     protocol.handle('framewall', request => { const url = new URL(request.url); const file = url.hostname === 'photo' ? imported.get(url.pathname.slice(1)) : undefined; return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 }); });
-    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: '拾景 · Scenelet', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: '拾景 · Scenelet', icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
     win.on('close', event => { if (!closing && state.settings.minimizeToTray) { event.preventDefault(); win.hide(); } });
-    tray = new Tray(nativeImage.createFromBuffer(require('./icon.cjs')()).resize({ width: 24, height: 24 }));
+    if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
+    tray = new Tray(trayIcon());
     tray.on('double-click', () => { win.show(); win.focus(); });
     updates = require('./updater.cjs')({ app, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error('正在设置壁纸，请完成后再安装更新。'); await saveQueue; closing = true; clearInterval(timer); } });
     registerIPC(); schedule(); updates.start();
