@@ -2,7 +2,7 @@
 
 版本遵循 SemVer。每个正式版本记录用户可见的变化；GitHub Release 正文从对应章节生成。
 
-## [Unreleased]
+## [0.7.0] - 2026-10-08
 
 ### Added
 

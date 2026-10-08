@@ -1,6 +1,6 @@
 {
   "name": "framewall",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Scenelet · 拾景 — photography wallpapers for your desktop",
   "main": "electron/main.cjs",
