@@ -1,7 +1,7 @@
 import { ImageOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Photo } from '../types';
-import PhotoCard from '../components/PhotoCard';
+import VirtualPhotoGrid from '../components/VirtualPhotoGrid';
 import { t } from '../i18n';
 
 type Props = {
@@ -21,7 +21,7 @@ export default function GalleryPage({ kind, photos, favorites, loading, hasMore,
       {filters}
     </div>
     <div className="photo-grid" aria-busy={loading}>
-      {photos.map((p, i) => <PhotoCard key={p.id} photo={p} eager={i < 4} liked={favorites.includes(p.id)} onOpen={() => onOpen(p)} onFavorite={() => onFavorite(p)}/>)}
+      {photos.length > 0 && <VirtualPhotoGrid photos={photos} favorites={favorites} onOpen={onOpen} onFavorite={onFavorite}/>}
       {loading && !photos.length && Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton" aria-hidden="true"><div/><span/><small/></div>)}
     </div>
     {!loading && !photos.length && <div className="empty-state">

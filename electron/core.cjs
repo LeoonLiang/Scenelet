@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const { t } = require('./i18n.cjs');
 
-const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: '2560', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
 function normalizeSettings(input = {}) {
   return {
     language: ['zh', 'en'].includes(input.language) ? input.language : 'system',
@@ -16,7 +16,7 @@ function normalizeSettings(input = {}) {
     lockScreenPrompt: input.lockScreenPrompt === true && input.syncLockScreen !== true,
     autostart: input.autostart === true,
     minimizeToTray: input.minimizeToTray !== false,
-    quality: ['1920', '2560', '3840'].includes(input.quality) ? input.quality : '2560',
+    quality: ['auto', '1920', '2560', '3840'].includes(input.quality) ? input.quality : defaults.quality,
     cacheLimit: [256, 512, 1024, 2048].includes(Number(input.cacheLimit)) ? Number(input.cacheLimit) : 1024,
     orientation: ['all', 'landscape', 'portrait', 'squarish'].includes(input.orientation) ? input.orientation : 'landscape',
     minWidth: [0, 1920, 2560, 3840].includes(Number(input.minWidth)) ? Number(input.minWidth) : 0,

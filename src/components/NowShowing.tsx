@@ -1,3 +1,4 @@
+import PhotoImage from './PhotoImage';
 import { Heart } from 'lucide-react';
 import type { Photo } from '../types';
 import { t } from '../i18n';
@@ -6,9 +7,9 @@ type Props = { photo: Photo; source: string; liked: boolean; onFavorite: () => v
 
 export default function NowShowing({ photo, source, liked, onFavorite, onOpen }: Props) {
   return <section className="now-showing" aria-label={t('now.label')}>
-    <button className="now-image" style={{ backgroundColor: photo.color }} onClick={onOpen} aria-label={t('photo.preview', { title: photo.title })}>
-      <img src={photo.full} alt={photo.title}/>
-    </button>
+    <div className="now-image" style={{ backgroundColor: photo.color }}>
+      <PhotoImage src={photo.full} alt={photo.title} onOpen={onOpen}/>
+    </div>
     <div className="now-caption">
       <div>
         <h2>{photo.title}</h2>

@@ -66,7 +66,10 @@ async function harness(t, failures = [2], lockGate) {
         schedule();
       },
       manual: () => tracked('window', () => apply('local-a')),
-      next, saveSettings, snapshot
+      next, saveSettings, snapshot, rotationTick, previousWallpaper, removePhoto,
+      expire() { state.nextRotationAt = Date.now() - 1000; },
+      add(photo) { state.photos.push(photo); known.set(photo.id, photo); },
+      applyPhoto: id => tracked('window', () => apply(id)),
     };`, context, { filename: entry });
   const api = context.module.exports;
   await api.initialize(dir, file);
@@ -145,4 +148,50 @@ test('desktop state is already on disk while optional lock-screen sync is still 
     release();
     await applying;
   }
+});
+
+
+test('unrelated saved settings preserve the existing next-rotation deadline', async t => {
+  const h = await harness(t, []);
+  const deadline = h.snapshot().nextRotationAt;
+  await h.saveSettings({ ...h.snapshot().settings, language: 'en', quality: 'auto', fit: 'fit' });
+  assert.equal(h.snapshot().nextRotationAt, deadline);
+  await h.saveSettings({ ...h.snapshot().settings, interval: 15 });
+  assert.ok(h.snapshot().nextRotationAt < deadline);
+});
+
+test('overdue wake and timer callbacks coalesce into a single wallpaper change', async t => {
+  const h = await harness(t, []);
+  h.expire();
+  await Promise.all([h.rotationTick(), h.rotationTick()]);
+  assert.equal(h.snapshot().history.length, 1);
+  assert.ok(h.snapshot().nextRotationAt > Date.now());
+  await h.rotationTick();
+  assert.equal(h.snapshot().history.length, 1);
+});
+
+test('rotation skips missing local candidates and keeps the valid photo', async t => {
+  const h = await harness(t, []);
+  h.add({ id: 'missing', source: 'local', localPath: path.join(h.dir, 'missing.jpg'), width: 4000, height: 2000 });
+  await h.next(true);
+  assert.equal(h.snapshot().current.id, 'local-a');
+  assert.equal(h.snapshot().photos.find(p => p.id === 'missing').missing, true);
+});
+
+test('previous walks backwards instead of toggling between two wallpapers', async t => {
+  const h = await harness(t, []);
+  for (const id of ['local-b', 'local-c']) h.add({ id, source: 'local', localPath: path.join(h.dir, 'photo.jpg'), width: 4000, height: 2000 });
+  await h.applyPhoto('local-a'); await h.applyPhoto('local-b'); await h.applyPhoto('local-c');
+  await h.previousWallpaper(); assert.equal(h.snapshot().current.id, 'local-b');
+  await h.previousWallpaper(); assert.equal(h.snapshot().current.id, 'local-a');
+});
+
+test('removing a local entry preserves its original and pauses an empty rotation', async t => {
+  const h = await harness(t, []);
+  await h.manual();
+  await h.removePhoto({ id: 'local-a' });
+  await fs.access(path.join(h.dir, 'photo.jpg'));
+  assert.equal(h.snapshot().photos.length, 0);
+  assert.equal(h.snapshot().settings.rotation, false);
+  assert.equal(h.snapshot().nextRotationAt, null);
 });

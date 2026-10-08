@@ -14,6 +14,7 @@ import PreviewDialog from './components/PreviewDialog';
 import WallpaperBar from './components/WallpaperBar';
 import ErrorPanel from './components/ErrorPanel';
 import Toast from './components/Toast';
+import PhotoImage from './components/PhotoImage';
 import LockScreenNotice from './components/LockScreenNotice';
 import HomePage from './pages/HomePage';
 import GalleryPage from './pages/GalleryPage';
@@ -41,6 +42,7 @@ export default function App() {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const [selection, setSelection] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [theme, setTheme] = useState<Theme>(() => read('framewall-theme', 'light'));
   const [cache, setCache] = useState({ bytes: 0, files: 0 });
@@ -163,7 +165,20 @@ export default function App() {
   function link(url?: string) { if (!url) return; if (api) void action(t('step.link'), async () => { await api.openLink({ url }); }); else window.open(url, '_blank', 'noopener,noreferrer'); }
   function copyFailure(f: Failure) { void navigator.clipboard.writeText(`${f.step}\n${f.message}`).then(() => setNotice(t('notice.copied'))).catch(() => setNotice(t('notice.copyFailed'))); }
 
-  const current = state.photos.find(p => p.id === state.current?.id);
+  async function rescan() {
+    if (desktop()) await action(t('library.rescan'), async () => { const result = await api!.rescanLibrary(); setState(result); setNotice(result.importFailed ? t('notice.importSkipped', { count: result.importFailed }) : t('library.rescanned')); });
+  }
+  async function removeSelected() {
+    if (!selected) return;
+    const id = selected.id;
+    if (api) await action(t('library.remove'), async () => { setState(await api.removePhoto({ id })); setSelected(null); setNotice(t('library.removed')); });
+    else { URL.revokeObjectURL(selected.full); setState(s => ({ ...s, photos: s.photos.filter(p => p.id !== id), favorites: s.favorites.filter(value => value !== id) })); setSelected(null); }
+  }
+  const primaryScreen = state.screens.find(s => s.primary) || state.screens[0];
+  const recent = [...new Set(state.history.map(h => h.id))].map(id => state.photos.find(p => p.id === id)).filter((p): p is Photo => !!p).slice(0, 20);
+  const openPhoto = (photo: Photo, collection = photos) => { setSelection(collection); setSelected(photo); };
+  const selectedIndex = selection.findIndex(p => p.id === selected?.id);
+  const current = state.photos.find(p => p.id === state.current?.id) || state.current?.photo;
   const activeSource = state.settings.rotationSource === 'online' ? state.settings.onlineSource.value || state.settings.onlineSource.kind === 'discover' ? sourceName(state.settings.onlineSource) : t('source.none') : isLocalKind(state.settings.rotationSource) ? kindLabel(state.settings.rotationSource) : t('source.legacy');
   const preview = page === 'browse' && !state.connected;
   const photos = (page === 'browse' ? preview ? demoPhotos() : remote : page === 'favorites' ? state.photos.filter(p => state.favorites.includes(p.id)) : state.photos.filter(p => p.source === 'local')).filter(p => matches(p, filters));
@@ -175,12 +190,15 @@ export default function App() {
   function content() {
     if (page === 'home') return <HomePage
       header={<PageHeader title={t('nav.home')} description={t('home.description')}/>}
-      nowShowing={current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} onFavorite={() => void favorite(current)} onOpen={() => setSelected(current)}/>}
+      nowShowing={<>
+        {current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/>}
+        {recent.length > 0 && <details className="recent-history"><summary>{t('history.title')}</summary><div className="recent-photos">{recent.map(p => <div key={p.id} style={{ width: 140, flexShrink: 0 }}><div style={{ height: 90 }}><PhotoImage src={p.thumb} alt={p.title} eager={false} onOpen={() => openPhoto(p, recent)}/></div><span>{p.title}</span></div>)}</div></details>}
+      </>}
       connected={state.connected} keyPanel={keyPanel} onManageKey={() => setPage('settings')}
       sourcePanel={<SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized}
-        filters={<FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>}
+        filters={<><FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>{primaryScreen && <button className="text-button screen-recommend" disabled={busy} onClick={() => setFilters(s => ({ ...s, orientation: primaryScreen.width / primaryScreen.height > 1.1 ? 'landscape' : primaryScreen.width / primaryScreen.height < .9 ? 'portrait' : 'squarish', minWidth: [3840, 2560, 1920].find(w => w <= primaryScreen.width) || 0 }))}>{t('screen.recommend')}</button>}</>}
         onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
-    if (page === 'settings') return <SettingsPage settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
+    if (page === 'settings') return <SettingsPage screen={primaryScreen} onRestoreBackup={() => { if (desktop()) void action(t('backup.restore'), async () => { const restored = await api!.restoreBackup(); setState(restored); setFilters(restored.settings); setCustomInterval(!intervals.includes(restored.settings.interval)); setCustomMinutes(String(restored.settings.interval)); }); }} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       onChange={patch => void changeSettings(patch)} onLink={link}
       onClearCache={() => { if (desktop()) void action(t('step.clearCache'), async () => { setCache(await api!.clearCache()); setNotice(t('notice.cacheCleared')); }); }}/>;
@@ -191,11 +209,12 @@ export default function App() {
         description={t(gallery === 'favorites' ? 'gallery.favoritesDesc' : gallery === 'library' ? 'gallery.libraryDesc' : 'gallery.browseDesc')}
         actions={<>
           {toHome}
+          {gallery === 'library' && api && <button className="button secondary" disabled={busy} onClick={() => void rescan()}>{t('library.rescan')}</button>}
           {gallery === 'library' && <button className="button secondary" onClick={() => void importPhotos()}><FolderOpen size={14}/>{t('gallery.import')}</button>}
           <button className="button primary" disabled={busy} onClick={() => void start(gallery === 'browse' ? browseSource : { kind: gallery, value: '', name: '' })}><Shuffle size={14}/>{t(gallery === 'browse' ? 'gallery.useSource' : 'gallery.usePhotos')}</button>
         </>}/>}
       filters={<FilterControls filters={filters} setFilters={setFilters} busy={busy} className="inline"/>}
-      onOpen={setSelected} onFavorite={p => void favorite(p)} onLoadMore={() => void loadMore()}
+      onOpen={p => openPhoto(p)} onFavorite={p => void favorite(p)} onLoadMore={() => void loadMore()}
       onGoHome={() => setPage('home')} onClearFilters={() => setFilters(s => ({ ...s, orientation: 'all', minWidth: 0 }))}/>;
   }
 
@@ -207,13 +226,19 @@ export default function App() {
         {failure && <ErrorPanel failure={failure} onClose={() => setFailure(null)} onCopy={() => copyFailure(failure)}/>}
         <LockScreenNotice platform={state.platform} settings={state.settings} warning={state.lockScreenWarning} busy={busy || !!changing}
           onChange={patch => void changeSettings(patch)} onSettings={() => setPage('settings')}/>
+        {state.recovery && <div className="recovery-notice" role="status"><span>{t(state.recovery === 'restored' ? 'backup.restored' : state.recovery === 'backup' ? 'backup.recovered' : 'backup.unavailable')}</span><button className="text-button" onClick={() => { if (api) void action(t('backup.dismiss'), async () => setState(await api.dismissRecovery())); }}>{t('backup.dismiss')}</button></div>}
         {content()}
       </div>
-      <WallpaperBar current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
+      <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
         onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}/>
     </main>
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
-    {selected && <PreviewDialog photo={selected} liked={state.favorites.includes(selected.id)} busy={busy} onClose={() => setSelected(null)} onLink={link}
+    {selected && <PreviewDialog screen={primaryScreen} fit={state.settings.fit}
+      onPrevious={selectedIndex > 0 ? () => setSelected(selection[selectedIndex - 1]) : undefined}
+      onNext={selectedIndex >= 0 && selectedIndex < selection.length - 1 ? () => setSelected(selection[selectedIndex + 1]) : undefined}
+      onRemove={() => void removeSelected()}
+      onRelink={api ? () => void action(t('library.relink'), async () => { const updated = await api.relinkPhoto({ id: selected.id }); setState(updated); setSelected(null); if (updated.importFailed) setNotice(t('notice.importSkipped', { count: updated.importFailed })); }) : undefined}
+      photo={selected} liked={state.favorites.includes(selected.id)} busy={busy} onClose={() => setSelected(null)} onLink={link}
       onFavorite={() => void favorite(selected)}
       onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: selected.id }); setState(applied); setSelected(null); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
       onDownload={() => { if (desktop()) void action(t('step.download'), async () => { const r = await api!.download({ id: selected.id }); if (!r.canceled) setNotice(t('notice.photoSaved')); }); }}/>}

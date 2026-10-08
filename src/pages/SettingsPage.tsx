@@ -7,6 +7,7 @@ import SelectField from '../components/SelectField';
 import { languages, t, type MessageKey } from '../i18n';
 
 type Props = {
+  screen?: { width: number; height: number }; onRestoreBackup: () => void;
   settings: Settings; platform: string; busy: boolean; cache: { bytes: number; files: number };
   theme: Theme; setTheme: (t: Theme) => void;
   header: ReactNode; keyPanel: ReactNode;
@@ -16,7 +17,7 @@ type Props = {
 const toggles = [{ field: 'autostart', key: 'settings.autostart' }, { field: 'minimizeToTray', key: 'settings.minimizeToTray' }] as const;
 const themes: { id: Theme; key: MessageKey }[] = [{ id: 'system', key: 'settings.theme.system' }, { id: 'light', key: 'settings.theme.light' }, { id: 'dark', key: 'settings.theme.dark' }];
 
-export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink }: Props) {
+export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onRestoreBackup }: Props) {
   return <div className="settings-page">
     {header}
     <section className="panel">
@@ -27,11 +28,12 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
           options={(['fill', 'fit', 'stretch', 'center'] as const).map(value => ({ value, label: t(`settings.fit.${value}`) }))}/>
         <SelectField label={t('settings.quality')} value={settings.quality} disabled={busy}
           onValueChange={quality => onChange({ quality })}
-          options={['1920', '2560', '3840'].map(value => ({ value, label: `${value} px` }))}/>
+          options={[{ value: 'auto', label: t('screen.auto') }, ...['1920', '2560', '3840'].map(value => ({ value, label: `${value} px` }))]}/>
         <SelectField label={t('settings.cacheLimit')} value={String(settings.cacheLimit)} disabled={busy}
           onValueChange={value => onChange({ cacheLimit: Number(value) })}
           options={[256, 512, 1024, 2048].map(value => ({ value: String(value), label: `${value} MB` }))}/>
       </div>
+      {screen && <p className="helper">{t('screen.hint', screen)}</p>}
       <div className="rows">
         {platform === 'win32' && <div className="row">
           <div><strong>{t('settings.syncLockScreen')}</strong><small id="lock-screen-description">{t('settings.syncLockScreenDesc')}</small></div>
@@ -62,6 +64,7 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
       </div>
       <p className="helper">{t(platform === 'darwin' ? 'settings.noteMac' : 'settings.note')}</p>
     </section>
+    <section className="panel"><header className="panel-head"><h2>{t('backup.restore')}</h2><p>{t('backup.help')}</p></header><button className="button secondary" disabled={busy} onClick={onRestoreBackup}>{t('backup.restore')}</button></section>
     {keyPanel}
     <UpdatePanel/>
     <details className="api-note">
