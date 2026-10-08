@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, safeStorage, protocol, net, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, nativeImage, safeStorage, protocol, net, shell, screen } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -9,6 +9,7 @@ const core = require('./core.cjs');
 const diagnostics = require('./diagnostics.cjs');
 const { withRetry, isTransient } = require('./retry.cjs');
 const updateCore = require('./update-core.cjs');
+const trayStatus = require('./tray-status.cjs');
 let updates;
 // Keep the existing data location when changing the public application name.
 if (!process.argv.includes('--smoke-test')) app.setPath('userData', path.join(app.getPath('appData'), 'framewall'));
@@ -16,9 +17,12 @@ const requestProgress = new Map();
 function progress(id, message) {
   if (message) requestProgress.set(id, message); else requestProgress.delete(id);
   if (win && !win.isDestroyed()) win.webContents.send('framewall:progress', [...requestProgress.values()].at(-1) || '');
+  if (change) { change.note = [...requestProgress.values()].at(-1) || ''; refreshChange(); }
 }
 protocol.registerSchemesAsPrivileged([{ scheme: 'framewall', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 let win, tray, timer, key = '', closing = false, applying = false, selecting = false;
+// Wallpaper change in progress: { stage: 'select' | 'download' | 'apply', received, total, note, origin }.
+let change = null, flash = null, flashTimer, spinTimer, spinTick = 0, lastError = '', lastMenuKey = null, lastChangeText = '';
 let state = { photos: [], favorites: [], playlists: [], history: [], current: null, settings: { ...core.defaults } };
 let storePath, cachePath;
 const known = new Map();
@@ -131,6 +135,7 @@ async function photoFile(p) {
   const file = path.join(cachePath, `${p.id}-${state.settings.quality}.jpg`);
   try { await fs.access(file); return file; } catch {}
   // A wallpaper selection counts as a download; never download on gallery hover.
+  setStage('download');
   await apiRequest(p.downloadLocation);
   const url = core.imageUrl(p.raw);
   url.searchParams.set('w', state.settings.quality); url.searchParams.set('q', '90'); url.searchParams.set('fm', 'jpg'); url.searchParams.set('fit', 'max');
@@ -142,7 +147,8 @@ async function photoFile(p) {
   if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(`图片下载失败。\nHTTP ${response.status} · images.unsplash.com${url.pathname}\n内容类型：${response.headers.get('content-type') || '未提供'}`);
   if (Number(response.headers.get('content-length')) > 50 * 1024 * 1024) throw new Error('图片超过 50 MB 大小限制。');
   const chunks = []; let size = 0;
-  for await (const chunk of response.body) { size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error('图片超过大小限制。'); chunks.push(chunk); }
+  setStage('download', { received: 0, total: Number(response.headers.get('content-length')) || 0 });
+  for await (const chunk of response.body) { size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error('图片超过大小限制。'); chunks.push(chunk); setStage('download', { received: size }); }
   const bytes = Buffer.concat(chunks);
   if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error('下载的图片无法读取。');
   await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
@@ -165,7 +171,8 @@ async function apply(id, stillCurrent) {
   applying = true;
   try {
     const p = getPhoto(id); const file = await photoFile(p);
-    if (stillCurrent && !stillCurrent()) throw new Error('轮换已暂停或来源已修改，本次设置已取消。');
+    if (stillCurrent && !stillCurrent()) throw Object.assign(new Error('轮换已暂停或来源已修改，本次设置已取消。'), { cancelled: true });
+    setStage('apply');
     await setNativeWallpaper(file, state.settings.fit);
     remember(p);
     state.current = { id, file, appliedAt: new Date().toISOString() };
@@ -178,8 +185,61 @@ function rotationPool(settings = state.settings) {
   const ids = selected.startsWith('playlist:') ? state.playlists.find(p => p.id === selected.slice(9))?.photoIds || [] : state.favorites;
   return (selected === 'library' ? state.photos.filter(p => p.source === 'local') : state.photos.filter(p => ids.includes(p.id))).filter(p => core.matchesPhoto(p, settings));
 }
-async function next(automatic = false) {
-  if (selecting || applying) throw new Error('正在选取并设置下一张壁纸，请稍等。');
+// Wraps a wallpaper change so the tray / menu bar and the window can show what is happening.
+async function tracked(origin, work) {
+  if (change || selecting || applying) throw new Error('正在选取并设置下一张壁纸，请稍等。');
+  clearTimeout(flashTimer); flash = null;
+  change = { stage: 'select', received: 0, total: 0, note: '', origin };
+  startSpinner(); refreshChange();
+  try {
+    const result = await work();
+    lastError = ''; finishChange('ok', origin);
+    return result;
+  } catch (error) {
+    // A change cancelled by the user (paused / source edited) is not a failure worth flagging.
+    if (error.cancelled) finishChange(null, origin);
+    else { lastError = diagnostics.redact(error.message || '操作失败。', key); finishChange('error', origin); }
+    throw error;
+  }
+}
+function setStage(stage, patch = {}) {
+  if (!change) return;
+  const updated = { ...change, ...(stage !== change.stage ? { received: 0, total: 0 } : {}), stage, ...patch };
+  const changed = trayStatus.statusText(updated) !== trayStatus.statusText(change);
+  change = updated;
+  if (changed) refreshChange();
+}
+function startSpinner() {
+  clearInterval(spinTimer);
+  if (process.platform !== 'darwin') return;
+  spinTimer = setInterval(() => { spinTick++; if (tray && change) tray.setTitle(trayStatus.menuBarTitle(change, spinTick), { fontType: 'monospacedDigit' }); }, 100);
+}
+function finishChange(result, origin) {
+  clearInterval(spinTimer); change = null; flash = result;
+  refreshChange();
+  if (!result) return;
+  flashTimer = setTimeout(() => { flash = null; updateTray(); }, result === 'ok' ? 2500 : 6000);
+  if (origin === 'tray' && !(win && !win.isDestroyed() && win.isVisible() && win.isFocused())) notifyResult(result);
+}
+function notifyResult(result) {
+  if (!Notification.isSupported()) return;
+  const p = state.current && known.get(state.current.id);
+  const notice = result === 'ok'
+    ? new Notification({ title: '已换上新壁纸', body: p ? `${p.title} · ${p.author}` : '桌面壁纸已更新。', silent: true })
+    : new Notification({ title: '换图失败，已保留原壁纸', body: trayStatus.truncate(trayStatus.firstLine(lastError), 80) + '\n点击打开拾景查看详情。', silent: true });
+  if (result !== 'ok') notice.on('click', () => { win.show(); win.focus(); });
+  notice.show();
+}
+function refreshChange() {
+  const text = trayStatus.statusText(change);
+  if (text !== lastChangeText && win && !win.isDestroyed()) win.webContents.send('framewall:changing', text);
+  lastChangeText = text;
+  updateTray({ force: false });
+}
+async function next(automatic = false, origin = automatic ? 'auto' : 'window') {
+  return tracked(origin, () => pickAndApply(automatic));
+}
+async function pickAndApply(automatic) {
   selecting = true;
   try {
     if (state.settings.rotationSource === 'online') {
@@ -195,7 +255,7 @@ async function next(automatic = false) {
         source = { ...source, value: id };
       }
       const result = await core.fetchRandomMatching(source, settings, apiRequest, state.current?.id, state.history.map(h => h.id));
-      if (!stillCurrent()) throw new Error('轮换来源或筛选已修改，旧来源的选图已取消。');
+      if (!stillCurrent()) throw Object.assign(new Error('轮换来源或筛选已修改，旧来源的选图已取消。'), { cancelled: true });
       known.set(result.photo.id, result.photo);
       return await apply(result.photo.id, stillCurrent);
     }
@@ -232,12 +292,22 @@ function trayIcon() {
   if (process.platform === 'darwin') image.setTemplateImage(true);
   return image;
 }
-function updateTray() {
+function updateTray({ force = true } = {}) {
   if (!tray) return;
-  tray.setToolTip(`拾景 Scenelet${state.settings.rotation ? ' · 自动轮换中' : ''}`);
+  tray.setToolTip(trayStatus.tooltip(change, { rotation: state.settings.rotation, lastError }));
+  if (process.platform === 'darwin') tray.setTitle(trayStatus.menuBarTitle(change, spinTick, flash), { fontType: 'monospacedDigit' });
+  // Rebuild the menu only when its content would visibly change, so download ticks don't thrash it.
+  const menuKey = [trayStatus.menuKey(change), flash, lastError, state.current?.id, state.settings.rotation].join('#');
+  if (!force && menuKey === lastMenuKey) return;
+  lastMenuKey = menuKey;
+  const p = state.current && known.get(state.current.id);
+  const status = change ? `⏳ ${trayStatus.statusText(change)}`
+    : lastError ? `⚠️ 换图失败：${trayStatus.truncate(trayStatus.firstLine(lastError), 26)}`
+    : p ? `${flash === 'ok' ? '✓ 已换上：' : '当前：'}${trayStatus.truncate(p.title, 22)}` : '';
   tray.setContextMenu(Menu.buildFromTemplate([
+    ...(status ? [{ label: status, enabled: !!lastError && !change, click: () => { win.show(); win.focus(); } }, { type: 'separator' }] : []),
     { label: '打开拾景', click: () => { win.show(); win.focus(); } },
-    { label: '下一张壁纸', click: () => next().catch(e => publish(e.message)) },
+    { label: change ? '正在换图…' : '下一张壁纸', enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
     { label: '自动轮换', type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
     { type: 'separator' },
     { label: '退出', click: () => { closing = true; app.quit(); } },
@@ -263,7 +333,7 @@ function registerIPC() {
       await save(); publish(); return snapshot();
     },
     settings: saveSettings,
-    wallpaper: ({ id }) => apply(id), next: () => next(),
+    wallpaper: ({ id }) => tracked('window', () => apply(id)), next: () => next(),
     download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: '图片', extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file) await fs.unlink(target); } return cacheInfo(); },
@@ -280,6 +350,7 @@ else {
   app.whenReady().then(async () => {
     storePath = path.join(app.getPath('userData'), 'library.json'); cachePath = path.join(app.getPath('userData'), 'wallpapers');
     await fs.mkdir(cachePath, { recursive: true });
+    if (process.platform === 'win32') app.setAppUserModelId('studio.framewall.desktop');
     try { if (!smoke) { const saved = JSON.parse(await fs.readFile(storePath, 'utf8')); state = { ...state, ...saved, settings: core.normalizeSettings(saved.settings) }; } } catch (e) { if (e.code !== 'ENOENT') console.error('Unable to load saved library:', e.message); }
     state.photos.forEach(p => { known.set(p.id, p); if (p.source === 'local') imported.set(p.id, p.localPath); });
     try { if (safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(await fs.readFile(path.join(app.getPath('userData'), 'credential.bin'))); } catch {}

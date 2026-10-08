@@ -29,5 +29,7 @@ export interface DesktopAPI {
   openLink(data: { url: string }): Promise<void>;
   onUpdate(callback: (state: AppState) => void): () => void;
   onProgress(callback: (message: string) => void): () => void;
+  /** Wallpaper change status (from the tray, auto rotation or the window); empty string when idle. */
+  onChanging(callback: (status: string) => void): () => void;
 }
 declare global { interface Window { framewall?: DesktopAPI } }

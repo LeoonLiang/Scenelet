@@ -7,7 +7,7 @@ function isTransient(error) {
 async function withRetry(work, { wait = sleep, onRetry = () => {}, shouldContinue = () => true } = {}) {
   const delays = [1000, 2000, 4000];
   for (let attempt = 0; ; attempt++) {
-    if (!shouldContinue()) throw new Error('连接配置已修改，本次请求已取消。');
+    if (!shouldContinue()) throw Object.assign(new Error('连接配置已修改，本次请求已取消。'), { cancelled: true });
     try { return await work(); }
     catch (error) {
       if (!(error.retryable ?? isTransient(error))) throw error;
