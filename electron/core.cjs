@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const { t } = require('./i18n.cjs');
 
-const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', autostart: false, minimizeToTray: true, quality: '2560', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: '2560', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
 function normalizeSettings(input = {}) {
   return {
     language: ['zh', 'en'].includes(input.language) ? input.language : 'system',
@@ -12,6 +12,8 @@ function normalizeSettings(input = {}) {
     rotationSource: ['library', 'online'].includes(input.rotationSource) || /^playlist:[a-zA-Z0-9-]+$/.test(input.rotationSource) ? input.rotationSource : 'favorites',
     onlineSource: normalizeOnlineSource(input.onlineSource, true),
     fit: ['fill', 'fit', 'stretch', 'center'].includes(input.fit) ? input.fit : 'fill',
+    syncLockScreen: input.syncLockScreen === true,
+    lockScreenPrompt: input.lockScreenPrompt === true && input.syncLockScreen !== true,
     autostart: input.autostart === true,
     minimizeToTray: input.minimizeToTray !== false,
     quality: ['1920', '2560', '3840'].includes(input.quality) ? input.quality : '2560',
@@ -19,6 +21,12 @@ function normalizeSettings(input = {}) {
     orientation: ['all', 'landscape', 'portrait', 'squarish'].includes(input.orientation) ? input.orientation : 'landscape',
     minWidth: [0, 1920, 2560, 3840].includes(Number(input.minWidth)) ? Number(input.minWidth) : 0,
   };
+}
+// Missing preferences belong to an older installation, never opt it in silently.
+function restoreSettings(input = {}, platform = process.platform) {
+  const settings = normalizeSettings(input);
+  if (typeof input.syncLockScreen !== 'boolean') settings.lockScreenPrompt = platform === 'win32';
+  return settings;
 }
 function nextPhoto(photos, currentId, order, random = Math.random) {
   if (!photos.length) throw new Error(t('core.emptyPool'));
@@ -135,4 +143,4 @@ async function fetchMatching(input, fetchPage) {
   return { photos, remaining, hasMore, nextPage: page };
 }
 function fileId(file) { return 'local-' + crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 24); }
-module.exports = { defaults, normalizeSettings, nextPhoto, imageUrl, apiUrl, buildQuery, publicPhoto, fileId, matchesPhoto, fetchMatching, normalizeOnlineSource, buildRandomQuery, fetchRandomMatching };
+module.exports = { defaults, normalizeSettings, restoreSettings, nextPhoto, imageUrl, apiUrl, buildQuery, publicPhoto, fileId, matchesPhoto, fetchMatching, normalizeOnlineSource, buildRandomQuery, fetchRandomMatching };

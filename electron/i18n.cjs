@@ -28,6 +28,11 @@ const messages = {
     'stage.default.short': '换图',
     'stage.retry.short': '重试中',
 
+    'warn.lockScreen': '桌面已更新，锁屏未能同步',
+    'warn.lockScreenTimeout': '锁屏同步超时。',
+    'warn.lockScreenUnknown': 'Windows 未返回详细原因。',
+    'tray.lockScreenWarning': '⚠️ 桌面已更新，锁屏未能同步',
+    'notify.lockScreenBody': '自动轮换会继续。点击打开拾景查看详情。',
     'notify.okTitle': '已换上新壁纸',
     'notify.okBody': '桌面壁纸已更新。',
     'notify.errorTitle': '换图失败，已保留原壁纸',
@@ -157,6 +162,11 @@ const messages = {
     'stage.default.short': 'Changing',
     'stage.retry.short': 'Retrying',
 
+    'warn.lockScreen': 'Desktop updated; lock screen could not sync',
+    'warn.lockScreenTimeout': 'Lock screen sync timed out.',
+    'warn.lockScreenUnknown': 'Windows did not return a detailed reason.',
+    'tray.lockScreenWarning': '⚠️ Desktop updated; lock screen could not sync',
+    'notify.lockScreenBody': 'Auto rotation can continue. Click to open Scenelet for details.',
     'notify.okTitle': 'New wallpaper set',
     'notify.okBody': 'Your desktop wallpaper has been updated.',
     'notify.errorTitle': 'Change failed, wallpaper kept',

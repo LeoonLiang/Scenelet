@@ -30,13 +30,15 @@ function menuBarTitle(change, tick = 0, flash = null) {
     return `${spinner[tick % spinner.length]} ${label}${extra ? ' ' + extra : ''}`;
   }
   if (flash === 'ok') return '✓';
+  if (flash === 'warning') return '⚠';
   if (flash === 'error') return t('tray.failed');
   return '';
 }
-function tooltip(change, { rotation = false, lastError = '' } = {}) {
+function tooltip(change, { rotation = false, lastError = '', lockScreenWarning = '' } = {}) {
   const base = `${t('app.tooltip')}${rotation ? t('tray.rotating') : ''}`;
   if (change) return `${base}\n${statusText(change)}`;
   if (lastError) return `${base}\n${t('tray.lastError', { reason: truncate(firstLine(lastError), 60) })}`;
+  if (lockScreenWarning) return `${base}\n${t('warn.lockScreen')}`;
   return base;
 }
 function firstLine(message) { return String(message || '').split('\n')[0]; }

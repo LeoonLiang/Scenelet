@@ -7,7 +7,7 @@ import SelectField from '../components/SelectField';
 import { languages, t, type MessageKey } from '../i18n';
 
 type Props = {
-  settings: Settings; busy: boolean; cache: { bytes: number; files: number };
+  settings: Settings; platform: string; busy: boolean; cache: { bytes: number; files: number };
   theme: Theme; setTheme: (t: Theme) => void;
   header: ReactNode; keyPanel: ReactNode;
   onChange: (patch: Partial<Settings>) => void; onClearCache: () => void; onLink: (url: string) => void;
@@ -16,7 +16,7 @@ type Props = {
 const toggles = [{ field: 'autostart', key: 'settings.autostart' }, { field: 'minimizeToTray', key: 'settings.minimizeToTray' }] as const;
 const themes: { id: Theme; key: MessageKey }[] = [{ id: 'system', key: 'settings.theme.system' }, { id: 'light', key: 'settings.theme.light' }, { id: 'dark', key: 'settings.theme.dark' }];
 
-export default function SettingsPage({ settings, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink }: Props) {
+export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink }: Props) {
   return <div className="settings-page">
     {header}
     <section className="panel">
@@ -33,6 +33,11 @@ export default function SettingsPage({ settings, busy, cache, theme, setTheme, h
           options={[256, 512, 1024, 2048].map(value => ({ value: String(value), label: `${value} MB` }))}/>
       </div>
       <div className="rows">
+        {platform === 'win32' && <div className="row">
+          <div><strong>{t('settings.syncLockScreen')}</strong><small id="lock-screen-description">{t('settings.syncLockScreenDesc')}</small></div>
+          <button className={`toggle${settings.syncLockScreen ? ' on' : ''}`} role="switch" aria-label={t('settings.syncLockScreen')} aria-describedby="lock-screen-description" aria-checked={settings.syncLockScreen} disabled={busy}
+            onClick={() => onChange({ syncLockScreen: !settings.syncLockScreen, lockScreenPrompt: false })}><span/></button>
+        </div>}
         <div className="row">
           <strong>{t('settings.appearance')}</strong>
           <div className="segmented" role="radiogroup" aria-label={t('settings.appearance')}>
@@ -55,7 +60,7 @@ export default function SettingsPage({ settings, busy, cache, theme, setTheme, h
           <button className="button secondary" disabled={busy} onClick={onClearCache}>{t('settings.clearCache')}</button>
         </div>
       </div>
-      <p className="helper">{t('settings.note')}</p>
+      <p className="helper">{t(platform === 'darwin' ? 'settings.noteMac' : 'settings.note')}</p>
     </section>
     {keyPanel}
     <UpdatePanel/>

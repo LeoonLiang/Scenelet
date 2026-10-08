@@ -38,6 +38,12 @@ Electron main 处理官方 API、凭据、图片文件、系统壁纸、托盘�
 
 Windows 使用 Unicode SystemParametersInfo 设置桌面壁纸，并配置系统填充模式；固定 PowerShell 脚本通过环境变量接收文件路径，避免路径插入代码。当前是系统桌面统一设置，非逐显示器设置。
 
+`electron/native-wallpaper.cjs` 统一处理原生壁纸调用。Windows 开启 `syncLockScreen` 后，在桌面设置成功后运行固定的 `electron/lock-screen.ps1`，通过 WinRT `StorageFile.GetFileFromPathAsync` 和 `LockScreen.SetImageFileAsync` 同步同一张图片。两个异步操作均等待完成，锁屏进程最多执行 30 秒；不修改锁屏策略、不提权。使用系统 PowerShell，x86 进程在 64 位系统上通过 Sysnative 选择原生宿主。
+
+新安装的默认设置开启同步；读取旧 `library.json` 时，缺少布尔偏好的配置迁移为关闭，并在 Windows 显示 `lockScreenPrompt`。用户选择开启或保持关闭后持久保存选择；开启从下一次换图生效。该开关只在 Windows 显示。
+
+桌面成功后先更新并落盘 current/history，再等待锁屏接口，避免等待期间退出导致状态丢失。锁屏失败返回独立结果，自动轮换继续。快照的 `lockScreenWarning` 供窗口和托盘展示，不进入完整换图失败的 error 通道；同步成功或关闭同步会清除警告。后台自动轮换在连续锁屏失败期间只发送一次通知，恢复后再次失败可重新通知。现有 `--wallpaper-test` 保持仅操作桌面，以确保原来的恢复逻辑完整。
+
 macOS 通过固定 AppleScript 将图片设到系统桌面，以 argv 传递路径；需真实 Mac 上验证系统版本、自动化权限和多桌面行为。当前布局由系统决定。
 
 原生定时器控制轮换，不依赖窗口可见。一次只执行一个壁纸任务，避免操作并发覆盖。顺序模式循环，随机模式避免紧邻重复。空池阻止启用，筛选变更造成空池会暂停。

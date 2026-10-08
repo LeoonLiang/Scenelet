@@ -6,6 +6,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const run = promisify(execFile);
 const core = require('./core.cjs');
+const wallpaper = require('./native-wallpaper.cjs').createWallpaperService({ run, platform: process.platform });
 const diagnostics = require('./diagnostics.cjs');
 const { withRetry, isTransient } = require('./retry.cjs');
 const updateCore = require('./update-core.cjs');
@@ -30,6 +31,8 @@ let win, tray, timer, key = '', closing = false, applying = false, selecting = f
 let change = null, flash = null, flashTimer, spinTimer, spinTick = 0, lastError = '', lastMenuKey = null, lastChangeText = '';
 let state = { photos: [], favorites: [], playlists: [], history: [], current: null, settings: { ...core.defaults } };
 let storePath, cachePath;
+let lockScreenWarning = '';
+let lockScreenWarningNotified = false;
 const known = new Map();
 const imported = new Map();
 const topicIds = new Map();
@@ -46,7 +49,7 @@ async function save() {
   return saveQueue;
 }
 function snapshot() {
-  return { ...state, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: d.size.width, height: d.size.height, primary: d.id === screen.getPrimaryDisplay().id })) };
+  return { ...state, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: d.size.width, height: d.size.height, primary: d.id === screen.getPrimaryDisplay().id })) };
 }
 function publish(error) {
   if (win && !win.isDestroyed()) win.webContents.send('framewall:update', { ...snapshot(), error });
@@ -159,18 +162,8 @@ async function photoFile(p) {
   await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
   return file;
 }
-async function setNativeWallpaper(file, fit) {
-  if (process.platform === 'win32') {
-    const styles = { fill: ['10', '0'], fit: ['6', '0'], stretch: ['2', '0'], center: ['0', '0'] };
-    const [style, tile] = styles[fit];
-    // Only fixed source code is executed; file paths travel through environment variables.
-    const script = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class FrameWallNative { [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool SystemParametersInfo(int action, int param, string value, int flags); }'; Set-ItemProperty -LiteralPath 'HKCU:\\Control Panel\\Desktop' -Name WallpaperStyle -Value '${style}'; Set-ItemProperty -LiteralPath 'HKCU:\\Control Panel\\Desktop' -Name TileWallpaper -Value '${tile}'; if (-not [FrameWallNative]::SystemParametersInfo(20, 0, $env:FRAMEWALL_IMAGE, 3)) { throw 'Windows could not set the wallpaper' }`;
-    await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, env: { ...process.env, FRAMEWALL_IMAGE: file }, timeout: 30000 });
-  } else if (process.platform === 'darwin') {
-    const script = 'on run argv\n tell application "System Events"\n set picture of every desktop to item 1 of argv\n end tell\n end run';
-    await run('/usr/bin/osascript', ['-e', script, file], { timeout: 30000 });
-  } else throw new Error(__("err.platform"));
-}
+// Keep the opt-in smoke check desktop-only so its existing restore remains complete.
+const setNativeWallpaper = wallpaper.setDesktop;
 async function apply(id, stillCurrent) {
   if (applying) throw new Error(__("err.applying"));
   applying = true;
@@ -178,11 +171,17 @@ async function apply(id, stillCurrent) {
     const p = getPhoto(id); const file = await photoFile(p);
     if (stillCurrent && !stillCurrent()) throw Object.assign(new Error(__("err.applyCancelled")), { cancelled: true });
     setStage('apply');
-    await setNativeWallpaper(file, state.settings.fit);
-    remember(p);
-    state.current = { id, file, appliedAt: new Date().toISOString() };
-    state.history = [{ id, appliedAt: state.current.appliedAt }, ...state.history].slice(0, 200);
-    await save(); await trimCache(); publish(); return snapshot();
+    const result = await wallpaper.apply(file, state.settings, async () => {
+      // Commit desktop success before the optional lock-screen operation can stall.
+      remember(p);
+      state.current = { id, file, appliedAt: new Date().toISOString() };
+      state.history = [{ id, appliedAt: state.current.appliedAt }, ...state.history].slice(0, 200);
+      await save();
+    });
+    lockScreenWarning = result.lockScreen === 'failed' && state.settings.syncLockScreen
+      ? diagnostics.redact(result.error, key) : '';
+    if (!lockScreenWarning) lockScreenWarningNotified = false;
+    await trimCache(); publish(); return snapshot();
   } finally { applying = false; }
 }
 function rotationPool(settings = state.settings) {
@@ -198,7 +197,7 @@ async function tracked(origin, work) {
   startSpinner(); refreshChange();
   try {
     const result = await work();
-    lastError = ''; finishChange('ok', origin);
+    lastError = ''; finishChange(lockScreenWarning ? 'warning' : 'ok', origin);
     return result;
   } catch (error) {
     // A change cancelled by the user (paused / source edited) is not a failure worth flagging.
@@ -224,12 +223,18 @@ function finishChange(result, origin) {
   refreshChange();
   if (!result) return;
   flashTimer = setTimeout(() => { flash = null; updateTray(); }, result === 'ok' ? 2500 : 6000);
-  if (origin === 'tray' && !(win && !win.isDestroyed() && win.isVisible() && win.isFocused())) notifyResult(result);
+  const hidden = !(win && !win.isDestroyed() && win.isVisible() && win.isFocused());
+  if (hidden && (origin === 'tray' || (origin === 'auto' && result === 'warning' && !lockScreenWarningNotified))) {
+    notifyResult(result);
+    if (result === 'warning') lockScreenWarningNotified = true;
+  }
 }
 function notifyResult(result) {
   if (!Notification.isSupported()) return;
   const p = state.current && known.get(state.current.id);
-  const notice = result === 'ok'
+  const notice = result === 'warning'
+    ? new Notification({ title: __('warn.lockScreen'), body: __('notify.lockScreenBody'), silent: true })
+    : result === 'ok'
     ? new Notification({ title: __('notify.okTitle'), body: p ? `${p.title} · ${p.author}` : __('notify.okBody'), silent: true })
     : new Notification({ title: __('notify.errorTitle'), body: __('notify.errorBody', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 80) }), silent: true });
   if (result !== 'ok') notice.on('click', () => { win.show(); win.focus(); });
@@ -287,6 +292,7 @@ async function saveSettings(input) {
     app.setLoginItemSettings({ openAtLogin: settings.autostart });
   }
   if (settings.language !== state.settings.language) { lastMenuKey = null; applyLanguage(settings.language); updates?.refresh(); }
+  if (!settings.syncLockScreen) { lockScreenWarning = ''; lockScreenWarningNotified = false; }
   state.settings = settings; await save(); schedule(); publish(warning); return snapshot();
 }
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
@@ -300,18 +306,19 @@ function trayIcon() {
 }
 function updateTray({ force = true } = {}) {
   if (!tray) return;
-  tray.setToolTip(trayStatus.tooltip(change, { rotation: state.settings.rotation, lastError }));
+  tray.setToolTip(trayStatus.tooltip(change, { rotation: state.settings.rotation, lastError, lockScreenWarning }));
   if (process.platform === 'darwin') tray.setTitle(trayStatus.menuBarTitle(change, spinTick, flash), { fontType: 'monospacedDigit' });
   // Rebuild the menu only when its content would visibly change, so download ticks don't thrash it.
-  const menuKey = [trayStatus.menuKey(change), flash, lastError, state.current?.id, state.settings.rotation].join('#');
+  const menuKey = [trayStatus.menuKey(change), flash, lastError, lockScreenWarning, state.current?.id, state.settings.rotation].join('#');
   if (!force && menuKey === lastMenuKey) return;
   lastMenuKey = menuKey;
   const p = state.current && known.get(state.current.id);
   const status = change ? `⏳ ${trayStatus.statusText(change)}`
     : lastError ? __('tray.failedLine', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 26) })
+    : lockScreenWarning ? __('tray.lockScreenWarning')
     : p ? (flash === 'ok' ? __('tray.applied', { title: trayStatus.truncate(p.title, 22) }) : __('tray.current', { title: trayStatus.truncate(p.title, 22) })) : '';
   tray.setContextMenu(Menu.buildFromTemplate([
-    ...(status ? [{ label: status, enabled: !!lastError && !change, click: () => { win.show(); win.focus(); } }, { type: 'separator' }] : []),
+    ...(status ? [{ label: status, enabled: !!(lastError || lockScreenWarning) && !change, click: () => { win.show(); win.focus(); } }, { type: 'separator' }] : []),
     { label: __('tray.open'), click: () => { win.show(); win.focus(); } },
     { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
     { label: __('tray.rotation'), type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
@@ -358,7 +365,7 @@ else {
     storePath = path.join(app.getPath('userData'), 'library.json'); cachePath = path.join(app.getPath('userData'), 'wallpapers');
     await fs.mkdir(cachePath, { recursive: true });
     if (process.platform === 'win32') app.setAppUserModelId('studio.framewall.desktop');
-    try { if (!smoke) { const saved = JSON.parse(await fs.readFile(storePath, 'utf8')); state = { ...state, ...saved, settings: core.normalizeSettings(saved.settings) }; } } catch (e) { if (e.code !== 'ENOENT') console.error('Unable to load saved library:', e.message); }
+    try { if (!smoke) { const saved = JSON.parse(await fs.readFile(storePath, 'utf8')); state = { ...state, ...saved, settings: core.restoreSettings(saved.settings) }; } } catch (e) { if (e.code !== 'ENOENT') console.error('Unable to load saved library:', e.message); }
     applyLanguage();
     state.photos.forEach(p => { known.set(p.id, p); if (p.source === 'local') imported.set(p.id, p.localPath); });
     try { if (safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(await fs.readFile(path.join(app.getPath('userData'), 'credential.bin'))); } catch {}

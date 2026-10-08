@@ -14,6 +14,7 @@ import PreviewDialog from './components/PreviewDialog';
 import WallpaperBar from './components/WallpaperBar';
 import ErrorPanel from './components/ErrorPanel';
 import Toast from './components/Toast';
+import LockScreenNotice from './components/LockScreenNotice';
 import HomePage from './pages/HomePage';
 import GalleryPage from './pages/GalleryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -128,14 +129,14 @@ export default function App() {
       setState(await api!.settings({ ...applied.settings, rotation: true }));
       setDraft(normalized);
       if (online) setSavedSources(old => [normalized, ...old.filter(x => x.kind !== normalized.kind || x.value !== normalized.value)].slice(0, 5));
-      setPage('home'); setNotice(t('notice.started'));
+      setPage('home'); setNotice(applied.lockScreenWarning ? '' : t('notice.started'));
     });
   }
   function browse(s = draft) {
     try { const normalized = normalizeSource(s); setBrowseSource(normalized); setPage(s.kind === 'favorites' ? 'favorites' : s.kind === 'library' ? 'library' : 'browse'); }
     catch (e) { report(t('step.browseSource'), e); }
   }
-  async function next() { if (desktop()) await action(t('step.next'), async () => { setState(await api!.next()); setNotice(t('notice.next')); }); }
+  async function next() { if (desktop()) await action(t('step.next'), async () => { const applied = await api!.next(); setState(applied); setNotice(applied.lockScreenWarning ? '' : t('notice.next')); }); }
   async function favorite(p: Photo) {
     if (p.source === 'demo') { report(t('step.favorite'), t('err.demoFavorite')); return; }
     if (api) await action(t('step.favorite'), async () => { setState(await api.favorite({ id: p.id })); });
@@ -179,7 +180,7 @@ export default function App() {
       sourcePanel={<SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized}
         filters={<FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>}
         onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
-    if (page === 'settings') return <SettingsPage settings={state.settings} busy={busy} cache={cache} theme={theme} setTheme={setTheme}
+    if (page === 'settings') return <SettingsPage settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       onChange={patch => void changeSettings(patch)} onLink={link}
       onClearCache={() => { if (desktop()) void action(t('step.clearCache'), async () => { setCache(await api!.clearCache()); setNotice(t('notice.cacheCleared')); }); }}/>;
@@ -204,6 +205,8 @@ export default function App() {
       <div className="page-content">
         {progress && <div className="retry-progress" role="status" aria-live="polite"><LoaderCircle size={15} className="spin"/>{progress}</div>}
         {failure && <ErrorPanel failure={failure} onClose={() => setFailure(null)} onCopy={() => copyFailure(failure)}/>}
+        <LockScreenNotice platform={state.platform} settings={state.settings} warning={state.lockScreenWarning} busy={busy || !!changing}
+          onChange={patch => void changeSettings(patch)} onSettings={() => setPage('settings')}/>
         {content()}
       </div>
       <WallpaperBar current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
@@ -212,7 +215,7 @@ export default function App() {
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
     {selected && <PreviewDialog photo={selected} liked={state.favorites.includes(selected.id)} busy={busy} onClose={() => setSelected(null)} onLink={link}
       onFavorite={() => void favorite(selected)}
-      onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { setState(await api!.wallpaper({ id: selected.id })); setSelected(null); setNotice(t('notice.wallpaperSet')); }); }}
+      onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: selected.id }); setState(applied); setSelected(null); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
       onDownload={() => { if (desktop()) void action(t('step.download'), async () => { const r = await api!.download({ id: selected.id }); if (!r.canceled) setNotice(t('notice.photoSaved')); }); }}/>}
     {notice && <Toast message={notice} onClose={() => setNotice('')}/>}
   </div>;

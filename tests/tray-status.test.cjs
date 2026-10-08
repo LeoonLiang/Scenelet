@@ -25,6 +25,13 @@ test('tooltip carries progress or the last failure', () => {
   assert.equal(tooltip({ stage: 'apply' }), '拾景 Scenelet\n正在设置壁纸…');
   assert.equal(tooltip(null, { lastError: '图片下载失败。\nHTTP 503' }), '拾景 Scenelet\n上次换图失败：图片下载失败。');
 });
+test('partial success mentions the lock screen without calling the desktop change a failure', () => {
+  const text = tooltip(null, { rotation: true, lockScreenWarning: 'Denied' });
+  assert.ok(text.includes('锁屏'));
+  assert.ok(text.includes('自动轮换中'));
+  assert.ok(!text.includes('上次换图失败'));
+  assert.equal(menuBarTitle(null, 0, 'warning'), '⚠');
+});
 test('percent, truncation and menu throttling', () => {
   assert.equal(percent({ received: 5, total: 0 }), null);
   assert.equal(percent({ received: 2000, total: 1000 }), 100);
