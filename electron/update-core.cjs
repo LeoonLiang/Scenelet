@@ -1,3 +1,4 @@
+const { t } = require('./i18n.cjs');
 const repository = 'LeoonLiang/Scenelet';
 const releasesUrl = `https://github.com/${repository}/releases`;
 function channel(arch) { if (!['x64', 'arm64'].includes(arch)) throw new Error('Unsupported update architecture'); return `latest-${arch}`; }
@@ -8,5 +9,5 @@ function assetName(tag, platform, arch, portable = false) {
   const v = tag.replace(/^v/, '');
   return `Scenelet-${v}-${platform === 'win32' ? 'windows' : 'macos'}-${arch}-${platform === 'win32' ? portable ? 'portable.zip' : 'setup.exe' : portable ? 'app.zip' : 'installer.dmg'}`;
 }
-function trustedReleaseUrl(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.startsWith(`/${repository}/releases`) || !/^\/LeoonLiang\/Scenelet\/releases(?:\/latest|\/tag\/[^/]+|\/download\/[^/]+\/[^/]+)?$/.test(url.pathname)) throw new Error('更新链接必须来自 Scenelet 官方 GitHub Releases。'); return url.toString(); }
+function trustedReleaseUrl(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.startsWith(`/${repository}/releases`) || !/^\/LeoonLiang\/Scenelet\/releases(?:\/latest|\/tag\/[^/]+|\/download\/[^/]+\/[^/]+)?$/.test(url.pathname)) throw new Error(t('update.untrusted')); return url.toString(); }
 module.exports = { repository, releasesUrl, channel, version, newer, assetName, trustedReleaseUrl };

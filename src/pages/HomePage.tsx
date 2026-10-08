@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { t } from '../i18n';
 
 type Props = { header: ReactNode; nowShowing: ReactNode; connected: boolean; keyPanel: ReactNode; sourcePanel: ReactNode; onManageKey: () => void };
 
@@ -8,7 +9,7 @@ export default function HomePage({ header, nowShowing, connected, keyPanel, sour
     {header}
     {nowShowing}
     {connected
-      ? <div className="connected-line"><span>Unsplash 已连接</span><button className="text-button" onClick={onManageKey}>管理 Key <ArrowRight size={13}/></button></div>
+      ? <div className="connected-line"><span>{t('conn.connected')}</span><button className="text-button" onClick={onManageKey}>{t('home.manageKey')} <ArrowRight size={13}/></button></div>
       : keyPanel}
     {sourcePanel}
   </div>;

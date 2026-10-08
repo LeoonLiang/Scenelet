@@ -1,6 +1,7 @@
 import { LoaderCircle, Monitor, Pause, Play, Shuffle } from 'lucide-react';
 import type { Photo } from '../types';
 import { intervalLabel } from '../lib/sources';
+import { t } from '../i18n';
 
 type Props = {
   current?: Photo; hasCurrent: boolean; source: string; changing: string; busy: boolean;
@@ -12,16 +13,16 @@ export default function WallpaperBar({ current, hasCurrent, source, changing, bu
   const every = intervalLabel(interval);
   return <footer className="wallpaper-bar">
     <div className="current-photo">
-      {current ? <img src={current.thumb} alt="当前壁纸"/> : <div className="current-placeholder"><Monitor size={18} strokeWidth={1.75}/></div>}
+      {current ? <img src={current.thumb} alt={t('now.label')}/> : <div className="current-placeholder"><Monitor size={18} strokeWidth={1.75}/></div>}
       <div>
-        <strong>{current ? current.title : '还没有壁纸'}</strong>
-        <small aria-live="polite">{changing || (current ? source : '在换壁纸页选择照片来源')}</small>
+        <strong>{current ? current.title : t('bar.none')}</strong>
+        <small aria-live="polite">{changing || (current ? source : t('bar.chooseHint'))}</small>
       </div>
     </div>
     <div className="bar-actions">
-      <span className="rotation-status">{rotation ? every === '每天' ? '每天换一张' : `每 ${every}换一张` : '自动换图已暂停'}</span>
-      <button className="icon-btn" aria-label={rotation ? '暂停换图' : '继续换图'} title={rotation ? '暂停换图' : '继续换图'} disabled={busy || !hasCurrent} onClick={onToggleRotation}>{rotation ? <Pause size={16}/> : <Play size={16}/>}</button>
-      <button className="button primary" disabled={busy || !!changing} onClick={hasCurrent ? onNext : onChooseSource}>{busy || changing ? <LoaderCircle className="spin" size={15}/> : <Shuffle size={15}/>}{changing ? '换图中' : hasCurrent ? '下一张' : '选择来源'}</button>
+      <span className="rotation-status">{rotation ? interval === 1440 ? t('bar.daily') : t('bar.every', { every }) : t('bar.paused')}</span>
+      <button className="icon-btn" aria-label={t(rotation ? 'bar.pause' : 'bar.resume')} title={t(rotation ? 'bar.pause' : 'bar.resume')} disabled={busy || !hasCurrent} onClick={onToggleRotation}>{rotation ? <Pause size={16}/> : <Play size={16}/>}</button>
+      <button className="button primary" disabled={busy || !!changing} onClick={hasCurrent ? onNext : onChooseSource}>{busy || changing ? <LoaderCircle className="spin" size={15}/> : <Shuffle size={15}/>}{t(changing ? 'bar.changing' : hasCurrent ? 'bar.next' : 'home.chooseSource')}</button>
     </div>
   </footer>;
 }

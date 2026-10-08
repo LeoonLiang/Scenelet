@@ -10,6 +10,8 @@ const diagnostics = require('./diagnostics.cjs');
 const { withRetry, isTransient } = require('./retry.cjs');
 const updateCore = require('./update-core.cjs');
 const trayStatus = require('./tray-status.cjs');
+const i18n = require('./i18n.cjs');
+const __ = i18n.t;
 let updates;
 // Keep the existing data location when changing the public application name.
 if (!process.argv.includes('--smoke-test')) app.setPath('userData', path.join(app.getPath('appData'), 'framewall'));
@@ -18,6 +20,9 @@ function progress(id, message) {
   if (message) requestProgress.set(id, message); else requestProgress.delete(id);
   if (win && !win.isDestroyed()) win.webContents.send('framewall:progress', [...requestProgress.values()].at(-1) || '');
   if (change) { change.note = [...requestProgress.values()].at(-1) || ''; refreshChange(); }
+}
+function applyLanguage(pref = state.settings.language) {
+  i18n.setLanguage(pref === 'zh' || pref === 'en' ? pref : i18n.resolve(app.getPreferredSystemLanguages()));
 }
 protocol.registerSchemesAsPrivileged([{ scheme: 'framewall', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 let win, tray, timer, key = '', closing = false, applying = false, selecting = false;
@@ -49,11 +54,11 @@ function publish(error) {
 }
 async function apiRequest(url, apiKey = key) {
   const id = Symbol(); const previousKey = key;
-  try { return await withRetry(() => apiRequestOnce(url, apiKey), { shouldContinue: () => key === previousKey, onRetry: ({ retry, total, delay }) => progress(id, `连接暂时失败，${delay / 1000} 秒后自动重试（${retry}/${total}）…`) }); }
+  try { return await withRetry(() => apiRequestOnce(url, apiKey), { shouldContinue: () => key === previousKey, onRetry: ({ retry, total, delay }) => progress(id, __('retry.connect', { seconds: delay / 1000, retry, total })) }); }
   finally { progress(id, ''); }
 }
 async function apiRequestOnce(url, apiKey = key) {
-  if (!apiKey) throw new Error('请先在首页连接 Unsplash，或选择本地照片。');
+  if (!apiKey) throw new Error(__("err.noKey"));
   const target = core.apiUrl(String(url));
   let response;
   try { response = await fetch(target, { headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(30000), redirect: 'error' }); }
@@ -64,12 +69,12 @@ async function apiRequestOnce(url, apiKey = key) {
     const failure = new Error(diagnostics.serviceError(response.status, target.pathname + target.search, details, response.headers.get('x-ratelimit-remaining'), apiKey)); failure.status = response.status; throw failure;
   }
   try { return { data: await response.json(), remaining: response.headers.get('x-ratelimit-remaining') }; }
-  catch (error) { const failure = new Error(`服务返回内容无法读取。\n请求：${target.pathname}\n${diagnostics.redact(error.message, apiKey)}`); failure.retryable = isTransient(error); throw failure; }
+  catch (error) { const failure = new Error(__('err.unreadable', { endpoint: target.pathname, reason: diagnostics.redact(error.message, apiKey) })); failure.retryable = isTransient(error); throw failure; }
 }
 async function connect(accessKey) {
   const candidate = String(accessKey || '').trim();
-  if (!/^[a-zA-Z0-9_-]{20,200}$/.test(candidate)) throw new Error('请输入完整的 Unsplash Access Key，无需 Secret Key。');
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('系统加密存储不可用，未保存凭据。');
+  if (!/^[a-zA-Z0-9_-]{20,200}$/.test(candidate)) throw new Error(__("err.invalidKey"));
+  if (!safeStorage.isEncryptionAvailable()) throw new Error(__("err.noEncryption"));
   await apiRequest('/photos?per_page=1', candidate);
   await fs.writeFile(path.join(app.getPath('userData'), 'credential.bin'), safeStorage.encryptString(candidate));
   key = candidate;
@@ -84,16 +89,16 @@ async function query(input) {
 }
 function getPhoto(id) {
   const p = known.get(id);
-  if (!p) throw new Error('这张照片尚未载入，请重新打开图库。');
+  if (!p) throw new Error(__("err.photoNotLoaded"));
   return p;
 }
 function remember(p) {
   if (!state.photos.some(item => item.id === p.id)) state.photos.push(p);
 }
 async function importFiles() {
-  const choice = await dialog.showMessageBox(win, { type: 'question', message: '从哪里导入照片？', detail: '导入只建立图片索引，不会移动或修改原文件。', buttons: ['选择照片', '选择文件夹', '取消'], defaultId: 0, cancelId: 2 });
+  const choice = await dialog.showMessageBox(win, { type: 'question', message: __('import.message'), detail: __('import.detail'), buttons: [__('import.files'), __('import.folder'), __('import.cancel')], defaultId: 0, cancelId: 2 });
   if (choice.response === 2) return snapshot();
-  const result = await dialog.showOpenDialog(win, choice.response === 1 ? { properties: ['openDirectory'] } : { properties: ['openFile', 'multiSelections'], filters: [{ name: '照片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
+  const result = await dialog.showOpenDialog(win, choice.response === 1 ? { properties: ['openDirectory'] } : { properties: ['openFile', 'multiSelections'], filters: [{ name: __('import.filter'), extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }] });
   if (result.canceled) return snapshot();
   const files = choice.response === 1 ? (await fs.readdir(result.filePaths[0], { withFileTypes: true })).filter(d => d.isFile()).map(d => path.join(result.filePaths[0], d.name)) : result.filePaths;
   return indexFiles(files);
@@ -106,7 +111,7 @@ async function indexFiles(files) {
       if (image.isEmpty()) { failed++; continue; }
       const size = image.getSize();
       const id = core.fileId(file);
-      const p = { id, source: 'local', title: path.basename(file), width: size.width, height: size.height, thumb: `framewall://photo/${id}`, full: `framewall://photo/${id}`, localPath: file, author: '我的照片', color: '#303a37', createdAt: (await fs.stat(file)).mtime.toISOString() };
+      const p = { id, source: 'local', title: path.basename(file), width: size.width, height: size.height, thumb: `framewall://photo/${id}`, full: `framewall://photo/${id}`, localPath: file, author: __('photo.mine'), color: '#303a37', createdAt: (await fs.stat(file)).mtime.toISOString() };
       imported.set(id, file); known.set(id, p); remember(p);
     } catch { failed++; }
   }
@@ -131,7 +136,7 @@ async function trimCache() {
 }
 async function photoFile(p) {
   if (p.source === 'local') { await fs.access(p.localPath); return p.localPath; }
-  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(p.id)) throw new Error('图片标识无效。');
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(p.id)) throw new Error(__("err.photoId"));
   const file = path.join(cachePath, `${p.id}-${state.settings.quality}.jpg`);
   try { await fs.access(file); return file; } catch {}
   // A wallpaper selection counts as a download; never download on gallery hover.
@@ -141,16 +146,16 @@ async function photoFile(p) {
   url.searchParams.set('w', state.settings.quality); url.searchParams.set('q', '90'); url.searchParams.set('fm', 'jpg'); url.searchParams.set('fit', 'max');
   let response;
   const requestId = Symbol();
-  try { response = await withRetry(async () => { const result = await fetch(url, { signal: AbortSignal.timeout(60000), redirect: 'error' }); if (result.status === 408 || result.status >= 500) { await result.body?.cancel(); const error = new Error(`图片下载失败。HTTP ${result.status} · images.unsplash.com${url.pathname}`); error.status = result.status; throw error; } return result; }, { onRetry: ({ retry, total, delay }) => progress(requestId, `图片下载暂时失败，${delay / 1000} 秒后重试（${retry}/${total}）…`) }); }
+  try { response = await withRetry(async () => { const result = await fetch(url, { signal: AbortSignal.timeout(60000), redirect: 'error' }); if (result.status === 408 || result.status >= 500) { await result.body?.cancel(); const error = new Error(__('err.downloadHttp', { status: result.status, target: `images.unsplash.com${url.pathname}` })); error.status = result.status; throw error; } return result; }, { onRetry: ({ retry, total, delay }) => progress(requestId, __('retry.download', { seconds: delay / 1000, retry, total })) }); }
   catch (error) { if (error.status || error.cause?.status) throw error; throw new Error(diagnostics.networkError(error, 'images.unsplash.com' + url.pathname, key)); }
   finally { progress(requestId, ''); }
-  if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(`图片下载失败。\nHTTP ${response.status} · images.unsplash.com${url.pathname}\n内容类型：${response.headers.get('content-type') || '未提供'}`);
-  if (Number(response.headers.get('content-length')) > 50 * 1024 * 1024) throw new Error('图片超过 50 MB 大小限制。');
+  if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(__('err.downloadBad', { status: response.status, target: `images.unsplash.com${url.pathname}`, type: response.headers.get('content-type') || __('err.notProvided') }));
+  if (Number(response.headers.get('content-length')) > 50 * 1024 * 1024) throw new Error(__("err.tooLarge"));
   const chunks = []; let size = 0;
   setStage('download', { received: 0, total: Number(response.headers.get('content-length')) || 0 });
-  for await (const chunk of response.body) { size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error('图片超过大小限制。'); chunks.push(chunk); setStage('download', { received: size }); }
+  for await (const chunk of response.body) { size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error(__("err.tooLarge")); chunks.push(chunk); setStage('download', { received: size }); }
   const bytes = Buffer.concat(chunks);
-  if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error('下载的图片无法读取。');
+  if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error(__("err.badImage"));
   await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
   return file;
 }
@@ -164,14 +169,14 @@ async function setNativeWallpaper(file, fit) {
   } else if (process.platform === 'darwin') {
     const script = 'on run argv\n tell application "System Events"\n set picture of every desktop to item 1 of argv\n end tell\n end run';
     await run('/usr/bin/osascript', ['-e', script, file], { timeout: 30000 });
-  } else throw new Error('当前版本仅实现 Windows / macOS 壁纸设置。');
+  } else throw new Error(__("err.platform"));
 }
 async function apply(id, stillCurrent) {
-  if (applying) throw new Error('正在设置壁纸，请稍等。');
+  if (applying) throw new Error(__("err.applying"));
   applying = true;
   try {
     const p = getPhoto(id); const file = await photoFile(p);
-    if (stillCurrent && !stillCurrent()) throw Object.assign(new Error('轮换已暂停或来源已修改，本次设置已取消。'), { cancelled: true });
+    if (stillCurrent && !stillCurrent()) throw Object.assign(new Error(__("err.applyCancelled")), { cancelled: true });
     setStage('apply');
     await setNativeWallpaper(file, state.settings.fit);
     remember(p);
@@ -187,7 +192,7 @@ function rotationPool(settings = state.settings) {
 }
 // Wraps a wallpaper change so the tray / menu bar and the window can show what is happening.
 async function tracked(origin, work) {
-  if (change || selecting || applying) throw new Error('正在选取并设置下一张壁纸，请稍等。');
+  if (change || selecting || applying) throw new Error(__("err.busy"));
   clearTimeout(flashTimer); flash = null;
   change = { stage: 'select', received: 0, total: 0, note: '', origin };
   startSpinner(); refreshChange();
@@ -198,7 +203,7 @@ async function tracked(origin, work) {
   } catch (error) {
     // A change cancelled by the user (paused / source edited) is not a failure worth flagging.
     if (error.cancelled) finishChange(null, origin);
-    else { lastError = diagnostics.redact(error.message || '操作失败。', key); finishChange('error', origin); }
+    else { lastError = diagnostics.redact(error.message || __('err.failed'), key); finishChange('error', origin); }
     throw error;
   }
 }
@@ -225,8 +230,8 @@ function notifyResult(result) {
   if (!Notification.isSupported()) return;
   const p = state.current && known.get(state.current.id);
   const notice = result === 'ok'
-    ? new Notification({ title: '已换上新壁纸', body: p ? `${p.title} · ${p.author}` : '桌面壁纸已更新。', silent: true })
-    : new Notification({ title: '换图失败，已保留原壁纸', body: trayStatus.truncate(trayStatus.firstLine(lastError), 80) + '\n点击打开拾景查看详情。', silent: true });
+    ? new Notification({ title: __('notify.okTitle'), body: p ? `${p.title} · ${p.author}` : __('notify.okBody'), silent: true })
+    : new Notification({ title: __('notify.errorTitle'), body: __('notify.errorBody', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 80) }), silent: true });
   if (result !== 'ok') notice.on('click', () => { win.show(); win.focus(); });
   notice.show();
 }
@@ -243,7 +248,7 @@ async function pickAndApply(automatic) {
   selecting = true;
   try {
     if (state.settings.rotationSource === 'online') {
-      if (!key) throw new Error('在线随机轮换需要先连接 Unsplash。');
+      if (!key) throw new Error(__("err.onlineNoKey"));
       const settings = { ...state.settings };
       const signature = JSON.stringify([settings.onlineSource, settings.orientation, settings.minWidth]);
       const stillCurrent = () => !!key && state.settings.rotationSource === 'online' && (!automatic || state.settings.rotation) && signature === JSON.stringify([state.settings.onlineSource, state.settings.orientation, state.settings.minWidth]);
@@ -255,7 +260,7 @@ async function pickAndApply(automatic) {
         source = { ...source, value: id };
       }
       const result = await core.fetchRandomMatching(source, settings, apiRequest, state.current?.id, state.history.map(h => h.id));
-      if (!stillCurrent()) throw Object.assign(new Error('轮换来源或筛选已修改，旧来源的选图已取消。'), { cancelled: true });
+      if (!stillCurrent()) throw Object.assign(new Error(__("err.selectCancelled")), { cancelled: true });
       known.set(result.photo.id, result.photo);
       return await apply(result.photo.id, stillCurrent);
     }
@@ -272,15 +277,16 @@ async function saveSettings(input) {
   const settings = core.normalizeSettings(input);
   let warning;
   if (settings.rotationSource === 'online') {
-    if (settings.rotation) { if (!key) throw new Error('请先连接 Unsplash，再开启在线随机轮换。'); core.normalizeOnlineSource(settings.onlineSource); }
+    if (settings.rotation) { if (!key) throw new Error(__("err.enableNoKey")); core.normalizeOnlineSource(settings.onlineSource); }
   } else if (settings.rotation && !rotationPool(settings).length) {
-    if (!state.settings.rotation) throw new Error('当前照片池中没有符合方向与分辨率的照片，请先收藏或导入合适的照片。');
-    settings.rotation = false; warning = '筛选后没有符合条件的照片，自动轮换已暂停。';
+    if (!state.settings.rotation) throw new Error(__("err.emptyPool"));
+    settings.rotation = false; warning = __('warn.poolPaused');
   }
   if (settings.autostart !== state.settings.autostart) {
-    if (!app.isPackaged && settings.autostart) throw new Error('开机启动需要安装打包后的客户端，开发模式不注册系统启动项。');
+    if (!app.isPackaged && settings.autostart) throw new Error(__("err.autostartDev"));
     app.setLoginItemSettings({ openAtLogin: settings.autostart });
   }
+  if (settings.language !== state.settings.language) { lastMenuKey = null; applyLanguage(settings.language); updates?.refresh(); }
   state.settings = settings; await save(); schedule(); publish(warning); return snapshot();
 }
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
@@ -302,15 +308,15 @@ function updateTray({ force = true } = {}) {
   lastMenuKey = menuKey;
   const p = state.current && known.get(state.current.id);
   const status = change ? `⏳ ${trayStatus.statusText(change)}`
-    : lastError ? `⚠️ 换图失败：${trayStatus.truncate(trayStatus.firstLine(lastError), 26)}`
-    : p ? `${flash === 'ok' ? '✓ 已换上：' : '当前：'}${trayStatus.truncate(p.title, 22)}` : '';
+    : lastError ? __('tray.failedLine', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 26) })
+    : p ? (flash === 'ok' ? __('tray.applied', { title: trayStatus.truncate(p.title, 22) }) : __('tray.current', { title: trayStatus.truncate(p.title, 22) })) : '';
   tray.setContextMenu(Menu.buildFromTemplate([
     ...(status ? [{ label: status, enabled: !!lastError && !change, click: () => { win.show(); win.focus(); } }, { type: 'separator' }] : []),
-    { label: '打开拾景', click: () => { win.show(); win.focus(); } },
-    { label: change ? '正在换图…' : '下一张壁纸', enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
-    { label: '自动轮换', type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
+    { label: __('tray.open'), click: () => { win.show(); win.focus(); } },
+    { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
+    { label: __('tray.rotation'), type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
     { type: 'separator' },
-    { label: '退出', click: () => { closing = true; app.quit(); } },
+    { label: __('tray.quit'), click: () => { closing = true; app.quit(); } },
   ]));
 }
 function registerIPC() {
@@ -325,23 +331,23 @@ function registerIPC() {
     import: importFiles,
     favorite: async ({ id }) => { const p = getPhoto(id); remember(p); state.favorites = state.favorites.includes(id) ? state.favorites.filter(f => f !== id) : [...state.favorites, id]; await save(); publish(); return snapshot(); },
     playlist: async ({ action, id, name, photoId }) => {
-      if (action === 'create') { if (!String(name || '').trim()) throw new Error('请输入播放列表名称。'); state.playlists.push({ id: require('node:crypto').randomUUID(), name: String(name).trim().slice(0, 60), photoIds: [] }); }
-      else { const list = state.playlists.find(p => p.id === id); if (!list) throw new Error('播放列表不存在。');
+      if (action === 'create') { if (!String(name || '').trim()) throw new Error(__("err.playlistName")); state.playlists.push({ id: require('node:crypto').randomUUID(), name: String(name).trim().slice(0, 60), photoIds: [] }); }
+      else { const list = state.playlists.find(p => p.id === id); if (!list) throw new Error(__("err.playlistMissing"));
         if (action === 'delete') { state.playlists = state.playlists.filter(p => p.id !== id); if (state.settings.rotationSource === `playlist:${id}`) { state.settings.rotation = false; state.settings.rotationSource = 'favorites'; schedule(); } }
         else if (action === 'toggle') { remember(getPhoto(photoId)); list.photoIds = list.photoIds.includes(photoId) ? list.photoIds.filter(p => p !== photoId) : [...list.photoIds, photoId]; }
-        else throw new Error('播放列表操作无效。'); }
+        else throw new Error(__("err.playlistAction")); }
       await save(); publish(); return snapshot();
     },
     settings: saveSettings,
     wallpaper: ({ id }) => tracked('window', () => apply(id)), next: () => next(),
-    download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: '图片', extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
+    download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file) await fs.unlink(target); } return cacheInfo(); },
-    'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error('只允许打开 Unsplash 来源链接。'); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
+    'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error(__("err.linkHost")); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
   };
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`framewall:${name}`, async (event, input) => {
-    if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('请求来源无效。');
-    try { return await handler(input); } catch (error) { throw new Error(diagnostics.redact(error.message || '操作失败。', key)); }
+    if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error(__("err.sender"));
+    try { return await handler(input); } catch (error) { throw new Error(diagnostics.redact(error.message || __('err.failed'), key)); }
   });
 }
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -352,17 +358,18 @@ else {
     await fs.mkdir(cachePath, { recursive: true });
     if (process.platform === 'win32') app.setAppUserModelId('studio.framewall.desktop');
     try { if (!smoke) { const saved = JSON.parse(await fs.readFile(storePath, 'utf8')); state = { ...state, ...saved, settings: core.normalizeSettings(saved.settings) }; } } catch (e) { if (e.code !== 'ENOENT') console.error('Unable to load saved library:', e.message); }
+    applyLanguage();
     state.photos.forEach(p => { known.set(p.id, p); if (p.source === 'local') imported.set(p.id, p.localPath); });
     try { if (safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(await fs.readFile(path.join(app.getPath('userData'), 'credential.bin'))); } catch {}
     protocol.handle('framewall', request => { const url = new URL(request.url); const file = url.hostname === 'photo' ? imported.get(url.pathname.slice(1)) : undefined; return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 }); });
-    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: '拾景 · Scenelet', icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: i18n.t('app.title'), icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
     win.on('close', event => { if (!closing && state.settings.minimizeToTray) { event.preventDefault(); win.hide(); } });
     if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
     tray = new Tray(trayIcon());
     tray.on('double-click', () => { win.show(); win.focus(); });
-    updates = require('./updater.cjs')({ app, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error('正在设置壁纸，请完成后再安装更新。'); await saveQueue; closing = true; clearInterval(timer); } });
+    updates = require('./updater.cjs')({ app, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error(__("err.installBusy")); await saveQueue; closing = true; clearInterval(timer); } });
     registerIPC(); schedule(); updates.start();
     if (dev) await win.loadURL('http://127.0.0.1:5173'); else await win.loadFile(path.join(__dirname, '../dist/index.html'));
     if (smoke) {
@@ -371,7 +378,7 @@ else {
         closing = true; app.quit();
       } catch (error) { console.error('SMOKE FAILED:', error); closing = true; app.exit(1); }
     }
-  }).catch(error => { dialog.showErrorBox('拾景启动失败', error.message); closing = true; app.quit(); });
+  }).catch(error => { dialog.showErrorBox(i18n.t('app.startFailed'), error.message); closing = true; app.quit(); });
   app.on('before-quit', () => { closing = true; clearInterval(timer); updates?.stop(); });
   app.on('window-all-closed', () => app.quit());
 }

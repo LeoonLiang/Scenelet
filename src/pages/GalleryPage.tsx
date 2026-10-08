@@ -2,6 +2,7 @@ import { ImageOff } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Photo } from '../types';
 import PhotoCard from '../components/PhotoCard';
+import { t } from '../i18n';
 
 type Props = {
   kind: 'browse' | 'favorites' | 'library';
@@ -16,7 +17,7 @@ export default function GalleryPage({ kind, photos, favorites, loading, hasMore,
   return <>
     {header}
     <div className="gallery-toolbar">
-      <span className="count">{loading && !photos.length ? '正在加载' : `${photos.length} 张${demo ? '示例照片，连接 Unsplash 后显示真实来源' : ''}`}</span>
+      <span className="count">{loading && !photos.length ? t('gallery.loading') : t(demo ? 'gallery.demoCount' : 'common.photos', { count: photos.length })}</span>
       {filters}
     </div>
     <div className="photo-grid" aria-busy={loading}>
@@ -25,10 +26,10 @@ export default function GalleryPage({ kind, photos, favorites, loading, hasMore,
     </div>
     {!loading && !photos.length && <div className="empty-state">
       <ImageOff size={28} strokeWidth={1.5}/>
-      <h3>{emptyFavorites ? '还没有收藏' : '没有符合筛选的照片'}</h3>
-      <p>{emptyFavorites ? '去换壁纸页选一个分类或作者，浏览时点爱心收藏。' : '放宽方向或最低宽度试试，或者加载更多。'}</p>
-      <button className="button secondary" onClick={emptyFavorites ? onGoHome : onClearFilters}>{emptyFavorites ? '去选照片来源' : '取消照片筛选'}</button>
+      <h3>{t(emptyFavorites ? 'gallery.emptyFavoritesTitle' : 'gallery.emptyTitle')}</h3>
+      <p>{t(emptyFavorites ? 'gallery.emptyFavoritesText' : 'gallery.emptyText')}</p>
+      <button className="button secondary" onClick={emptyFavorites ? onGoHome : onClearFilters}>{t(emptyFavorites ? 'gallery.emptyFavoritesAction' : 'gallery.clearFilters')}</button>
     </div>}
-    {hasMore && <div className="load-more"><button className="button secondary" disabled={loading} onClick={onLoadMore}>{loading ? '加载中…' : '加载更多照片'}</button></div>}
+    {hasMore && <div className="load-more"><button className="button secondary" disabled={loading} onClick={onLoadMore}>{t(loading ? 'gallery.loadingMore' : 'gallery.loadMore')}</button></div>}
   </>;
 }

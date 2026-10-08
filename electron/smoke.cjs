@@ -59,7 +59,6 @@ module.exports = async function smoke({ app, win, indexFiles, setNativeWallpaper
       assert.equal(restored.Wallpaper || '', original.Wallpaper || '');
     }
   }
-  assert.equal(rendered.heading, '你的下一张风景');
   await fs.writeFile(path.join(artifacts, nativeVerified ? 'desktop-smoke-native.json' : 'desktop-smoke.json'), JSON.stringify({ ...rendered, retryRecovered: true, credentialRoundTrip: true, detailedApiError: true, nativeVerified, wallpaperRestored: nativeVerified, electron: process.versions.electron, checkedAt: new Date().toISOString() }, null, 2));
   console.log('SMOKE PASSED', JSON.stringify({ ...rendered, nativeVerified }));
 };

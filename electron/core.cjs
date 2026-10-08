@@ -1,9 +1,11 @@
 const crypto = require('node:crypto');
 const path = require('node:path');
+const { t } = require('./i18n.cjs');
 
-const defaults = { interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', autostart: false, minimizeToTray: true, quality: '2560', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', autostart: false, minimizeToTray: true, quality: '2560', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
 function normalizeSettings(input = {}) {
   return {
+    language: ['zh', 'en'].includes(input.language) ? input.language : 'system',
     interval: Number.isInteger(Number(input.interval)) && Number(input.interval) >= 1 && Number(input.interval) <= 10080 ? Number(input.interval) : defaults.interval,
     rotation: input.rotation === true,
     order: input.rotationSource !== 'online' && input.order === 'sequential' ? 'sequential' : 'shuffle',
@@ -19,7 +21,7 @@ function normalizeSettings(input = {}) {
   };
 }
 function nextPhoto(photos, currentId, order, random = Math.random) {
-  if (!photos.length) throw new Error('轮换列表为空，请先导入图片或收藏照片。');
+  if (!photos.length) throw new Error(t('core.emptyPool'));
   if (photos.length === 1) return photos[0];
   if (order === 'sequential') return photos[(photos.findIndex(p => p.id === currentId) + 1) % photos.length];
   const candidates = photos.filter(p => p.id !== currentId);
@@ -27,12 +29,12 @@ function nextPhoto(photos, currentId, order, random = Math.random) {
 }
 function imageUrl(value) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || url.hostname !== 'images.unsplash.com') throw new Error('图片来源地址无效。');
+  if (url.protocol !== 'https:' || url.hostname !== 'images.unsplash.com') throw new Error(t('core.imageUrl'));
   return url;
 }
 function apiUrl(value) {
   const url = new URL(value, 'https://api.unsplash.com');
-  if (url.protocol !== 'https:' || url.hostname !== 'api.unsplash.com') throw new Error('API 地址无效。');
+  if (url.protocol !== 'https:' || url.hostname !== 'api.unsplash.com') throw new Error(t('core.apiUrl'));
   return url;
 }
 function buildQuery(input = {}) {
@@ -42,12 +44,12 @@ function buildQuery(input = {}) {
   let endpoint = '/photos';
   if (kind === 'search' && value) endpoint = '/search/photos';
   else if (kind === 'author') {
-    if (!/^[a-zA-Z0-9_-]{1,60}$/.test(value)) throw new Error('请输入 Unsplash 用户名，例如 anniespratt。');
+    if (!/^[a-zA-Z0-9_-]{1,60}$/.test(value)) throw new Error(t('core.username'));
     endpoint = `/users/${encodeURIComponent(value)}/photos`;
   } else if (kind === 'collection' || kind === 'topic') {
-    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error('请输入有效的合集 ID 或主题 slug。');
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new Error(t('core.collectionId'));
     endpoint = `/${kind === 'collection' ? 'collections' : 'topics'}/${encodeURIComponent(value)}/photos`;
-  } else if (!['discover', 'search'].includes(kind)) throw new Error('图片来源类型无效。');
+  } else if (!['discover', 'search'].includes(kind)) throw new Error(t('core.kind'));
   const url = apiUrl(endpoint);
   url.searchParams.set('page', String(page));
   url.searchParams.set('per_page', '24');
@@ -64,17 +66,17 @@ function normalizeOnlineSource(input = {}, allowEmpty = false) {
   let value = String(input?.value || '').trim();
   if (value.includes('://')) {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hostname !== 'unsplash.com') throw new Error('请使用 Unsplash 的作者、合集或主题链接。');
+    if (url.protocol !== 'https:' || url.hostname !== 'unsplash.com') throw new Error(t('core.linkHost'));
     const parts = url.pathname.split('/').filter(Boolean);
     if (kind === 'author' && parts[0]?.startsWith('@')) value = parts[0].slice(1);
     else if (kind === 'collection' && parts[0] === 'collections') value = parts[1] || '';
     else if (kind === 'topic' && ['t', 'topics'].includes(parts[0])) value = parts[1] || '';
-    else throw new Error('链接与所选来源类型不匹配。');
+    else throw new Error(t('core.linkMismatch'));
   } else if (kind === 'author') value = value.replace(/^@/, '');
   if (kind === 'discover') value = '';
-  else if (!value && !allowEmpty) throw new Error('请先指定作者、合集、主题或分类关键词。');
-  else if (value && (kind === 'search' ? value.length > 120 : !new RegExp(`^[a-zA-Z0-9_-]{1,${kind === 'author' ? 60 : 100}}$`).test(value))) throw new Error('图片来源格式无效。');
-  return { kind, value, name: String(input?.name || '').trim().slice(0, 100) || value || (kind === 'discover' ? '全部 Unsplash 照片' : '') };
+  else if (!value && !allowEmpty) throw new Error(t('core.sourceEmpty'));
+  else if (value && (kind === 'search' ? value.length > 120 : !new RegExp(`^[a-zA-Z0-9_-]{1,${kind === 'author' ? 60 : 100}}$`).test(value))) throw new Error(t('core.sourceFormat'));
+  return { kind, value, name: String(input?.name || '').trim().slice(0, 100) || value || (kind === 'discover' ? t('source.discover') : '') };
 }
 function buildRandomQuery(source, settings = {}) {
   const s = normalizeOnlineSource(source);
@@ -104,7 +106,7 @@ async function fetchRandomMatching(source, settings, fetchAPI, currentId, recent
   }
   const candidates = [...fallback.values()];
   if (candidates.length) return { photo: candidates[Math.floor(random() * candidates.length)], remaining, attempts: 3 };
-  throw new Error('本次未抽到符合方向、分辨率且不同于当前壁纸的照片，已保留原壁纸。可放宽筛选或稍后再试。');
+  throw new Error(t('core.noMatch'));
 }
 function publicPhoto(p) {
   return { id: p.id, source: 'unsplash', title: p.description || p.alt_description || 'Untitled', width: p.width, height: p.height, color: p.color, thumb: p.urls.small, full: p.urls.regular, raw: p.urls.raw, author: p.user.name, username: p.user.username, authorUrl: p.user.links.html, link: p.links.html, downloadLocation: p.links.download_location, createdAt: p.created_at };
