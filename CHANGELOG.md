@@ -2,6 +2,13 @@
 
 版本遵循 SemVer。每个正式版本记录用户可见的变化；GitHub Release 正文从对应章节生成。
 
+## [0.8.0] - 2026-10-08
+
+### Fixed
+
+- Windows 打包时写入新版应用图标及 EXE 元数据，修复桌面快捷方式仍显示旧图标的问题。
+- 修复锁屏同步等待 Windows 异步操作时出现的 `System.__ComObject` 到 `Windows.Foundation.IAsyncAction` 类型转换错误。
+
 ## [0.7.0] - 2026-10-08
 
 ### Added

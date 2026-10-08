@@ -15,7 +15,14 @@ try {
     $fileTask = $asTask.MakeGenericMethod([Windows.Storage.StorageFile]).Invoke($null, @($operation))
     $file = $fileTask.GetAwaiter().GetResult()
     $action = [Windows.System.UserProfile.LockScreen]::SetImageFileAsync($file)
-    [System.WindowsRuntimeSystemExtensions]::AsTask([Windows.Foundation.IAsyncAction]$action).GetAwaiter().GetResult()
+    # PowerShell cannot directly cast the returned COM wrapper to IAsyncAction.
+    # Reflection lets the CLR marshal it, just as for IAsyncOperation above.
+    $asActionTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and -not $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and
+        $_.GetParameters()[0].ParameterType.FullName -eq 'Windows.Foundation.IAsyncAction'
+    } | Select-Object -First 1
+    $actionTask = $asActionTask.Invoke($null, @($action))
+    $actionTask.GetAwaiter().GetResult()
 } catch {
     [Console]::Error.WriteLine($_.Exception.GetBaseException().Message)
     exit 1
