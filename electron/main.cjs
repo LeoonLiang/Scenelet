@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, nativeImage, safeStorage, protocol, net, shell, screen, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, Notification, nativeImage, safeStorage, protocol, net, shell, screen, powerMonitor, clipboard } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -15,6 +15,7 @@ const updateCore = require('./update-core.cjs');
 const trayStatus = require('./tray-status.cjs');
 const i18n = require('./i18n.cjs');
 const credit = require('./credit.cjs');
+const share = require('./share.cjs');
 const desktopPeek = require('./desktop-peek.cjs').createDesktopPeek({ app, Menu, run, getWindow: () => win });
 const __ = i18n.t;
 let updates;
@@ -524,6 +525,16 @@ function registerIPC() {
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },
     'show-desktop': () => desktopPeek.show(),
+    share: async ({ id }) => { clipboard.writeText(share.shareText(getPhoto(id))); },
+    // Reads a shared wallpaper link (from the paste event, or the clipboard) and loads that photo for the preview dialog.
+    'open-shared': async ({ text } = {}) => {
+      const id = share.parseShared(typeof text === 'string' ? text : clipboard.readText());
+      if (!id) throw new Error(__('err.shareNone'));
+      if (!key) throw new Error(__('err.shareNeedsKey'));
+      const photo = core.publicPhoto((await apiRequest(`/photos/${encodeURIComponent(id)}`)).data);
+      known.set(photo.id, photo);
+      return photo;
+    },
     'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error(__("err.linkHost")); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
   };
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`framewall:${name}`, async (event, input) => {

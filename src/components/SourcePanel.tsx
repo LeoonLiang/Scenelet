@@ -10,6 +10,7 @@ type Props = {
   draft: OnlineSource; setDraft: (s: OnlineSource | ((s: OnlineSource) => OnlineSource)) => void;
   savedSources: OnlineSource[]; favorites: number; busy: boolean; initialized: boolean;
   filters: ReactNode; onBrowse: () => void; onStart: () => void; onImport: () => void; onOpenFavorites: () => void;
+  fixed?: boolean;
 };
 
 const kinds: { kind: string; Icon: typeof Mountain; hint?: MessageKey }[] = [
@@ -20,7 +21,7 @@ const kinds: { kind: string; Icon: typeof Mountain; hint?: MessageKey }[] = [
   { kind: 'library', Icon: FolderOpen, hint: 'source.hint.library' },
 ];
 
-export default function SourcePanel({ draft, setDraft, savedSources, favorites, busy, initialized, filters, onBrowse, onStart, onImport, onOpenFavorites }: Props) {
+export default function SourcePanel({ draft, setDraft, savedSources, favorites, busy, initialized, filters, onBrowse, onStart, onImport, onOpenFavorites, fixed }: Props) {
   const local = isLocalKind(draft.kind);
   const category = ['search', 'topic', 'discover'].includes(draft.kind);
   return <section className="panel source-panel">
@@ -77,7 +78,7 @@ export default function SourcePanel({ draft, setDraft, savedSources, favorites, 
     <footer className="source-start">
       <p><strong>{t(local ? 'source.localHint' : 'source.onlineHint')}</strong>{t('source.applyNote')}</p>
       <button className="button secondary" disabled={busy} onClick={onBrowse}>{t('source.browse')}</button>
-      <button className="button primary" disabled={busy || !initialized} onClick={onStart}>{busy ? <LoaderCircle className="spin" size={15}/> : <Play size={15}/>}{t('source.start')}</button>
+      <button className="button primary" disabled={busy || !initialized} onClick={onStart}>{busy ? <LoaderCircle className="spin" size={15}/> : <Play size={15}/>}{t(fixed ? 'source.startOnce' : 'source.start')}</button>
     </footer>
   </section>;
 }

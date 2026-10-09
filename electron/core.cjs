@@ -4,6 +4,7 @@ const { t } = require('./i18n.cjs');
 const creditStyles = require('./credit-styles.json');
 
 const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', creditStyle: creditStyles.default, syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const settingsRevision = 1;
 function normalizeSettings(input = {}) {
   return {
     language: ['zh', 'en'].includes(input.language) ? input.language : 'system',
@@ -23,12 +24,16 @@ function normalizeSettings(input = {}) {
     cacheLimit: [256, 512, 1024, 2048].includes(Number(input.cacheLimit)) ? Number(input.cacheLimit) : 1024,
     orientation: ['all', 'landscape', 'portrait', 'squarish'].includes(input.orientation) ? input.orientation : 'landscape',
     minWidth: [0, 1920, 2560, 3840].includes(Number(input.minWidth)) ? Number(input.minWidth) : 0,
+    // Bumped when a stored default needs a one-time migration in restoreSettings.
+    settingsRevision,
   };
 }
 // Missing preferences belong to an older installation, never opt it in silently.
 function restoreSettings(input = {}, platform = process.platform) {
   const settings = normalizeSettings(input);
   if (typeof input.syncLockScreen !== 'boolean') settings.lockScreenPrompt = platform === 'win32';
+  // Up to 0.8.0 there was no automatic quality and 2560 px was the stored default, so move those users to the screen-matched size once.
+  if (!(input.settingsRevision >= 1) && input.quality === '2560') settings.quality = 'auto';
   return settings;
 }
 function nextPhoto(photos, currentId, order, random = Math.random) {

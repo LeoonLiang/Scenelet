@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, FolderOpen, LoaderCircle, Shuffle } from 'lucide-react';
+import { ArrowRight, ClipboardPaste, FolderOpen, LoaderCircle, Shuffle } from 'lucide-react';
 import type { AppState, OnlineSource, Photo, Settings } from './types';
 import { demoPhotos, initial } from './data';
 import { friendly, intervals, isLocalKind, kindLabel, matches, normalizeSource, read, sourceName, type Failure, type Page, type Theme } from './lib/sources';
@@ -38,6 +38,8 @@ export default function App() {
   const [changing, setChanging] = useState('');
   const [customInterval, setCustomInterval] = useState(false);
   const [customMinutes, setCustomMinutes] = useState('60');
+  // "Don't change" in the interval list: keep one wallpaper, no rotation.
+  const [fixed, setFixed] = useState(false);
   const [notice, setNotice] = useState('');
   const [failure, setFailure] = useState<Failure | null>(null);
   const [keyInput, setKeyInput] = useState('');
@@ -55,6 +57,7 @@ export default function App() {
     function restore(s: AppState) {
       setState(s); setFilters(s.settings);
       setCustomInterval(!intervals.includes(s.settings.interval)); setCustomMinutes(String(s.settings.interval));
+      setFixed(!!s.current && !s.settings.rotation);
       if (s.settings.rotationSource === 'online' && (s.settings.onlineSource.value || s.settings.onlineSource.kind === 'discover')) setDraft(s.settings.onlineSource);
       else if (isLocalKind(s.settings.rotationSource) && s.photos.length) setDraft({ kind: s.settings.rotationSource, value: '', name: '' });
       setInitialized(true);
@@ -87,6 +90,28 @@ export default function App() {
     setLanguage(pref === 'zh' || pref === 'en' ? pref : resolveLanguage(navigator.languages));
   }, [initialized, state.settings.language]);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [page]);
+  // Pausing or resuming from the bar or the tray keeps the interval list in step.
+  useEffect(() => { if (initialized && state.current) setFixed(!state.settings.rotation); }, [initialized, state.settings.rotation]);
+  // Browse results are a sub-page of the wallpaper page: mouse back button, Cmd+[ and Alt+Left go back to it.
+  useEffect(() => {
+    if (page !== 'browse' || selected) return;
+    const back = () => setPage('home');
+    const mouse = (e: MouseEvent) => { if (e.button === 3) { e.preventDefault(); back(); } };
+    const key = (e: KeyboardEvent) => { if ((e.metaKey && e.key === '[') || (e.altKey && e.key === 'ArrowLeft')) { e.preventDefault(); back(); } };
+    window.addEventListener('mouseup', mouse); document.addEventListener('keydown', key);
+    return () => { window.removeEventListener('mouseup', mouse); document.removeEventListener('keydown', key); };
+  }, [page, selected]);
+  // Pasting a shared wallpaper anywhere outside a text field opens it.
+  useEffect(() => {
+    const paste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+      const text = e.clipboardData?.getData('text') || '';
+      if (/unsplash\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?photos\//.test(text)) { e.preventDefault(); void openShared(text); }
+    };
+    document.addEventListener('paste', paste);
+    return () => document.removeEventListener('paste', paste);
+  });
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(''), 4500); return () => clearTimeout(timer); } }, [notice]);
   useEffect(() => { if (page === 'settings' && api) api.cache().then(setCache).catch(e => report(t('step.cache'), e)); }, [page]);
   useEffect(() => {
@@ -125,13 +150,14 @@ export default function App() {
       const interval = customInterval ? Number(customMinutes) : filters.interval;
       if (!Number.isInteger(interval) || interval < 1 || interval > 10080) throw new Error(t('err.interval'));
       if (online && !state.connected) throw new Error(t('err.needKey'));
+      const keep = fixed;
       const settings = { ...state.settings, orientation: filters.orientation, minWidth: filters.minWidth, interval, rotationSource: online ? 'online' : s.kind, onlineSource: online ? normalized : state.settings.onlineSource, order: 'shuffle', rotation: false };
       setState(await api!.settings(settings));
       const applied = await api!.next(); setState(applied);
-      setState(await api!.settings({ ...applied.settings, rotation: true }));
+      if (!keep) setState(await api!.settings({ ...applied.settings, rotation: true }));
       setDraft(normalized);
       if (online) setSavedSources(old => [normalized, ...old.filter(x => x.kind !== normalized.kind || x.value !== normalized.value)].slice(0, 5));
-      setPage('home'); setNotice(applied.lockScreenWarning ? '' : t('notice.started'));
+      setPage('home'); setNotice(applied.lockScreenWarning ? '' : t(keep ? 'notice.fixed' : 'notice.started'));
     });
   }
   function browse(s = draft) {
@@ -164,6 +190,12 @@ export default function App() {
   }
   function link(url?: string) { if (!url) return; if (api) void action(t('step.link'), async () => { await api.openLink({ url }); }); else window.open(url, '_blank', 'noopener,noreferrer'); }
   function feedback() { if (api) void action(t('feedback.title'), () => api.feedback()); else window.open('https://github.com/LeoonLiang/Scenelet/issues/new', '_blank', 'noopener,noreferrer'); }
+  async function openShared(text?: string) {
+    if (desktop()) await action(t('home.paste'), async () => { const photo = await api!.openShared({ text }); openPhoto(photo, [photo]); });
+  }
+  function sharePhoto(p: Photo) {
+    if (desktop()) void action(t('preview.share'), async () => { await api!.share({ id: p.id }); setNotice(t('notice.shared')); });
+  }
   function copyFailure(f: Failure) { void navigator.clipboard.writeText(`${f.step}\n${f.message}`).then(() => setNotice(t('notice.copied'))).catch(() => setNotice(t('notice.copyFailed'))); }
 
   async function rescan() {
@@ -185,12 +217,14 @@ export default function App() {
   const photos = (page === 'browse' ? preview ? demoPhotos() : remote : page === 'favorites' ? state.photos.filter(p => state.favorites.includes(p.id)) : state.photos.filter(p => p.source === 'local')).filter(p => matches(p, filters));
 
   const keyPanel = <KeyPanel connected={state.connected} desktop={!!api} busy={busy} keyInput={keyInput} setKeyInput={setKeyInput} showKey={showKey} setShowKey={setShowKey} onConnect={() => void connect()} onDisconnect={() => void disconnect()} onImport={() => void importPhotos()} onLink={link}/>;
-  const intervalState = { custom: customInterval, setCustom: setCustomInterval, minutes: customMinutes, setMinutes: setCustomMinutes };
+  const intervalState = { custom: customInterval, setCustom: setCustomInterval, minutes: customMinutes, setMinutes: setCustomMinutes, off: fixed,
+    setOff: (off: boolean) => { setFixed(off); if (off && state.settings.rotation) void changeSettings({ rotation: false }); } };
   const toHome = <button className="button secondary" onClick={() => setPage('home')}>{t('home.chooseSource')} <ArrowRight size={14}/></button>;
 
   function content() {
     if (page === 'home') return <HomePage
-      header={<PageHeader title={t('nav.home')} description={t('home.description')}/>}
+      header={<PageHeader title={t('nav.home')} description={t('home.description')}
+        actions={api && <button className="button secondary" disabled={busy} title={t('home.pasteHint')} onClick={() => void openShared()}><ClipboardPaste size={14}/>{t('home.paste')}</button>}/>}
       nowShowing={<>
         {current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/>}
         {recent.length > 0 && <details className="recent-history"><summary>{t('history.title')}</summary><div className="recent-photos">{recent.map(p => <div key={p.id} style={{ width: 140, flexShrink: 0 }}><div style={{ height: 90 }}><PhotoImage src={p.thumb} alt={p.title} eager={false} onOpen={() => openPhoto(p, recent)}/></div><span>{p.title}</span></div>)}</div></details>}
@@ -198,7 +232,7 @@ export default function App() {
       connected={state.connected} keyPanel={keyPanel} onManageKey={() => setPage('settings')}
       sourcePanel={<SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized}
         filters={<><FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>{primaryScreen && <button className="text-button screen-recommend" disabled={busy} onClick={() => setFilters(s => ({ ...s, orientation: primaryScreen.width / primaryScreen.height > 1.1 ? 'landscape' : primaryScreen.width / primaryScreen.height < .9 ? 'portrait' : 'squarish', minWidth: [3840, 2560, 1920].find(w => w <= primaryScreen.width) || 0 }))}>{t('screen.recommend')}</button>}</>}
-        onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
+        fixed={fixed} onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
     if (page === 'settings') return <SettingsPage screen={primaryScreen} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       onChange={patch => void changeSettings(patch)} onLink={link}
@@ -206,10 +240,11 @@ export default function App() {
     const gallery = page;
     return <GalleryPage kind={gallery} photos={photos} favorites={state.favorites} loading={loading} hasMore={hasMore} demo={preview}
       header={<PageHeader
+        back={gallery === 'browse' ? { label: t('common.back'), onClick: () => setPage('home') } : undefined}
         title={gallery === 'browse' ? sourceName(browseSource) : kindLabel(gallery)}
         description={t(gallery === 'favorites' ? 'gallery.favoritesDesc' : gallery === 'library' ? 'gallery.libraryDesc' : 'gallery.browseDesc')}
         actions={<>
-          {toHome}
+          {gallery !== 'browse' && toHome}
           {gallery === 'library' && api && <button className="button secondary" disabled={busy} onClick={() => void rescan()}>{t('library.rescan')}</button>}
           {gallery === 'library' && <button className="button secondary" onClick={() => void importPhotos()}><FolderOpen size={14}/>{t('gallery.import')}</button>}
           <button className="button primary" disabled={busy} onClick={() => void start(gallery === 'browse' ? browseSource : { kind: gallery, value: '', name: '' })}><Shuffle size={14}/>{t(gallery === 'browse' ? 'gallery.useSource' : 'gallery.usePhotos')}</button>
@@ -241,7 +276,7 @@ export default function App() {
       onRemove={() => void removeSelected()}
       onRelink={api ? () => void action(t('library.relink'), async () => { const updated = await api.relinkPhoto({ id: selected.id }); setState(updated); setSelected(null); if (updated.importFailed) setNotice(t('notice.importSkipped', { count: updated.importFailed })); }) : undefined}
       photo={selected} liked={state.favorites.includes(selected.id)} busy={busy} onClose={() => setSelected(null)} onLink={link}
-      onFavorite={() => void favorite(selected)}
+      onFavorite={() => void favorite(selected)} onShare={() => sharePhoto(selected)}
       onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: selected.id }); setState(applied); setSelected(null); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
       onDownload={() => { if (desktop()) void action(t('step.download'), async () => { const r = await api!.download({ id: selected.id }); if (!r.canceled) setNotice(t('notice.photoSaved')); }); }}/>}
     {notice && <Toast message={notice} onClose={() => setNotice('')}/>}

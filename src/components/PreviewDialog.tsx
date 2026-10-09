@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ExternalLink, Heart, Monitor, X } from 'lucide-react';
+import { ArrowDownToLine, ExternalLink, Heart, Monitor, Share2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
 import { t } from '../i18n';
@@ -10,10 +10,10 @@ type Props = {
   screen?: { width: number; height: number }; fit: string; credit?: string;
   onPrevious?: () => void; onNext?: () => void; onRemove?: () => void; onRelink?: () => void;
   photo: Photo; liked: boolean; busy: boolean;
-  onClose: () => void; onSetWallpaper: () => void; onFavorite: () => void; onDownload: () => void; onLink: (url?: string) => void;
+  onClose: () => void; onSetWallpaper: () => void; onFavorite: () => void; onDownload: () => void; onLink: (url?: string) => void; onShare: () => void;
 };
 
-export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, screen, fit, credit, onPrevious, onNext, onRemove, onRelink }: Props) {
+export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, onShare, screen, fit, credit, onPrevious, onNext, onRemove, onRelink }: Props) {
   const demo = photo.source === 'demo';
   const [crop, setCrop] = useState(false);
   const dialog = useRef<HTMLElement>(null);
@@ -67,6 +67,7 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
         <div className="preview-actions">
           <button className={`button secondary${liked ? ' is-liked' : ''}`} disabled={busy || demo} onClick={onFavorite}><Heart size={15} fill={liked ? 'currentColor' : 'none'}/>{t(liked ? 'photo.favorited' : 'photo.favorite')}</button>
           <button className="button secondary" disabled={busy || demo} onClick={onDownload}><ArrowDownToLine size={15}/>{t('preview.download')}</button>
+          {photo.source === 'unsplash' && <button className="button secondary" disabled={busy} title={t('preview.shareHint')} onClick={onShare}><Share2 size={15}/>{t('preview.share')}</button>}
         </div>
         <p className="helper">{t('preview.help')}</p>
         {photo.source === 'local' && <div className="library-actions">
