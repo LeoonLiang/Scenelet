@@ -292,6 +292,8 @@ const en: Messages = {
   'bar.resume': 'Resume rotation',
   'bar.changing': 'Changing',
   'bar.next': 'Next',
+  'bar.peek': 'Preview desktop',
+  'bar.peekHint': 'Hide all windows to see your desktop. Click the Scenelet icon to come back.',
 };
 
 export default en;

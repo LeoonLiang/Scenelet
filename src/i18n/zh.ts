@@ -291,6 +291,8 @@ const zh = {
   'bar.resume': '继续换图',
   'bar.changing': '换图中',
   'bar.next': '下一张',
+  'bar.peek': '预览桌面',
+  'bar.peekHint': '收起所有窗口看看桌面，点拾景图标就能回来',
 };
 
 export default zh;

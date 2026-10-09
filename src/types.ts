@@ -35,6 +35,8 @@ export interface DesktopAPI {
   openLink(data: { url: string }): Promise<void>;
   /** Opens a new GitHub issue in the browser. */
   feedback(): Promise<void>;
+  /** Hides every window so the real desktop shows; they come back when Scenelet is reopened. */
+  showDesktop(): Promise<void>;
   onUpdate(callback: (state: AppState) => void): () => void;
   onProgress(callback: (message: string) => void): () => void;
   /** Wallpaper change status (from the tray, auto rotation or the window); empty string when idle. */

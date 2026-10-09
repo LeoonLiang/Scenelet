@@ -231,7 +231,8 @@ export default function App() {
         {content()}
       </div>
       <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
-        onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}/>
+        onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}
+        onPeek={() => { if (desktop()) void api!.showDesktop().catch(e => report(t('bar.peek'), e)); }}/>
     </main>
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
     {selected && <PreviewDialog screen={primaryScreen} fit={state.settings.fit} credit={state.settings.creditStyle === 'none' ? undefined : state.settings.creditStyle}

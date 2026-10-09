@@ -15,6 +15,7 @@ const updateCore = require('./update-core.cjs');
 const trayStatus = require('./tray-status.cjs');
 const i18n = require('./i18n.cjs');
 const credit = require('./credit.cjs');
+const desktopPeek = require('./desktop-peek.cjs').createDesktopPeek({ app, Menu, run, getWindow: () => win });
 const __ = i18n.t;
 let updates;
 // Keep the existing data location when changing the public application name.
@@ -376,7 +377,7 @@ function notifyResult(result) {
     : result === 'ok'
     ? new Notification({ title: __('notify.okTitle'), body: p ? `${p.title} · ${p.author}` : __('notify.okBody'), silent: true })
     : new Notification({ title: __('notify.errorTitle'), body: __('notify.errorBody', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 80) }), silent: true });
-  if (result !== 'ok') notice.on('click', () => { win.show(); win.focus(); });
+  if (result !== 'ok') notice.on('click', () => void reveal());
   notice.show();
 }
 function refreshChange() {
@@ -479,13 +480,20 @@ function updateTray({ force = true } = {}) {
     : lockScreenWarning ? __('tray.lockScreenWarning')
     : p ? (flash === 'ok' ? __('tray.applied', { title: trayStatus.truncate(p.title, 22) }) : __('tray.current', { title: trayStatus.truncate(p.title, 22) })) : '';
   tray.setContextMenu(Menu.buildFromTemplate([
-    ...(status ? [{ label: status, enabled: !!(lastError || lockScreenWarning) && !change, click: () => { win.show(); win.focus(); } }, { type: 'separator' }] : []),
-    { label: __('tray.open'), click: () => { win.show(); win.focus(); } },
+    ...(status ? [{ label: status, enabled: !!(lastError || lockScreenWarning) && !change, click: () => void reveal() }, { type: 'separator' }] : []),
+    { label: __('tray.open'), click: () => void reveal() },
     { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
+    { label: __('tray.peek'), click: () => desktopPeek.show().catch(e => publish(e.message)) },
     { label: __('tray.rotation'), type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
     { type: 'separator' },
     { label: __('tray.quit'), click: () => { closing = true; app.quit(); } },
   ]));
+}
+// Bring the window back. Also ends a desktop preview, so the apps hidden by it return behind Scenelet.
+async function reveal() {
+  const ending = desktopPeek.restore(); // clears the preview flag before our own focus event can re-enter
+  if (win.isMinimized()) win.restore(); win.show(); win.focus();
+  if (await ending) { win.show(); win.focus(); }
 }
 function registerIPC() {
   const handlers = {
@@ -515,6 +523,7 @@ function registerIPC() {
     download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },
+    'show-desktop': () => desktopPeek.show(),
     'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error(__("err.linkHost")); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
   };
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`framewall:${name}`, async (event, input) => {
@@ -556,7 +565,9 @@ async function servePhoto(request) {
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+  app.on('second-instance', () => { if (win) void reveal(); });
+  // macOS: clicking the Dock icon brings the window back (and ends a desktop preview).
+  app.on('activate', () => { if (win && !smoke) void reveal(); });
   app.whenReady().then(async () => {
     storePath = path.join(app.getPath('userData'), 'library.json'); cachePath = path.join(app.getPath('userData'), 'wallpapers');
     await fs.mkdir(cachePath, { recursive: true });
@@ -575,7 +586,9 @@ else {
     win.on('close', event => { if (!closing && state.settings.minimizeToTray) { event.preventDefault(); win.hide(); } });
     if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
     tray = new Tray(trayIcon());
-    tray.on('double-click', () => { win.show(); win.focus(); });
+    tray.on('double-click', () => void reveal());
+    // Returning to Scenelet any other way (Cmd-Tab, taskbar button) also ends a desktop preview.
+    win.on('focus', () => { if (desktopPeek.active) void reveal(); });
     updates = require('./updater.cjs')({ app, shell, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error(__("err.installBusy")); await saveQueue; closing = true; clearInterval(timer); } });
     registerIPC();
     const previousDeadline = state.nextRotationAt; schedule();
