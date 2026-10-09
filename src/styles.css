@@ -362,7 +362,18 @@ progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accen
 .original-preview { width: 100%; height: 100%; }
 .desktop-crop { position: relative; background: #000; overflow: hidden; container-type: size; }
 /* Mirrors the credit drawn onto the wallpaper (electron/credit-layout.cjs): 1.25% text height, 2.2% margin. */
-.credit-mark { position: absolute; right: 2.2cqh; bottom: 2.2cqh; font-size: max(7px, 1.25cqh); font-weight: 500; line-height: 1; color: rgba(255, 255, 255, .86); text-shadow: 0 0 3px rgba(0, 0, 0, .45); white-space: nowrap; pointer-events: none; }
+.credit-mark { position: absolute; right: 2.2cqh; bottom: 2.2cqh; line-height: 1; color: rgba(255, 255, 255, .86); text-shadow: 0 0 3px rgba(0, 0, 0, .45); white-space: nowrap; pointer-events: none; }
+.credit-styles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 6px 0 16px; border-bottom: 1px solid var(--line); }
+.credit-style { display: flex; flex-direction: column; gap: 6px; padding: 0; text-align: left; font-size: 12px; color: var(--muted); }
+.credit-style.selected { color: var(--text); }
+.credit-style:disabled { opacity: .6; }
+@media (max-width: 1100px) { .credit-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* A small dusk landscape, so the sample reads like a real wallpaper corner. */
+.credit-sample { position: relative; display: block; container-type: inline-size; aspect-ratio: 16 / 10; border-radius: var(--r-sm); overflow: hidden; background: linear-gradient(180deg, #4f6b80 0%, #9d8f8a 38%, #d4a57e 54%, #3c4840 55%, #232b26 100%); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: box-shadow .15s; }
+.credit-sample .credit-mark { right: 6cqw; bottom: 6cqw; max-width: 88cqw; overflow: hidden; text-overflow: ellipsis; }
+.credit-style.selected .credit-sample { box-shadow: 0 0 0 2px var(--accent); }
+.credit-style:focus-visible { outline: none; }
+.credit-style:focus-visible .credit-sample { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-ring); }
 .preview-navigation, .library-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
 .library-actions .helper { width: 100%; }
 .recent-photos { display: flex; gap: 12px; overflow-x: auto; padding: 14px 0; }

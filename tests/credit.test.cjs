@@ -33,7 +33,7 @@ test('createCredited renders once, then reuses the copy without opening a window
     async loadURL() {}
     destroy() { this.destroyed = true; }
   }
-  const options = { BrowserWindow: FakeWindow, file, url: 'framewall://cache/abc-3840.jpg', displays: [], fit: 'fill', text: 'Photo by A on Unsplash', directory, photoId: 'abc' };
+  const options = { BrowserWindow: FakeWindow, file, url: 'framewall://cache/abc-3840.jpg', displays: [], fit: 'fill', styleId: 'classic', author: 'A', directory, photoId: 'abc' };
   const first = await createCredited(options);
   assert.match(path.basename(first), /^abc-credit-[0-9a-f]{16}\.jpg$/);
   assert.equal(await fs.readFile(first, 'utf8'), 'credited');
@@ -41,9 +41,12 @@ test('createCredited renders once, then reuses the copy without opening a window
   assert.ok(jobs[0].includes('"text":"Photo by A on Unsplash"') && jobs[0].includes('"source":{"width":1265,"height":712}'));
   assert.equal(await createCredited(options), first);
   assert.equal(jobs.length, 1);
-  // Changing the text produces a new copy.
-  assert.notEqual(await createCredited({ ...options, text: 'Photo by B on Unsplash' }), first);
+  // Changing the author or the style produces a new copy.
+  assert.notEqual(await createCredited({ ...options, author: 'B' }), first);
   assert.equal(jobs.length, 2);
+  await createCredited({ ...options, styleId: 'minimal' });
+  assert.equal(jobs.length, 3);
+  assert.ok(jobs[2].includes('"text":"A / UNSPLASH"') && jobs[2].includes('"tracking":0.14'));
   await fs.rm(directory, { recursive: true, force: true });
 });
 
@@ -57,10 +60,10 @@ test('createCredited surfaces renderer failures and leaves no partial file', asy
     async loadURL() {}
     destroy() { destroyed = true; }
   }
-  await assert.rejects(createCredited({ BrowserWindow: BrokenWindow, file, url: 'x', displays: [], fit: 'fill', text: 'T', directory, photoId: 'abc' }), /Unexpected image size/);
+  await assert.rejects(createCredited({ BrowserWindow: BrokenWindow, file, url: 'x', displays: [], fit: 'fill', styleId: 'classic', author: 'T', directory, photoId: 'abc' }), /Unexpected image size/);
   assert.ok(destroyed);
   assert.deepEqual(await fs.readdir(directory), ['abc-1920.jpg']);
   await fs.writeFile(file, 'not a jpeg');
-  await assert.rejects(createCredited({ BrowserWindow: BrokenWindow, file, url: 'x', displays: [], fit: 'fill', text: 'T', directory, photoId: 'abc' }), /Not a readable JPEG/);
+  await assert.rejects(createCredited({ BrowserWindow: BrokenWindow, file, url: 'x', displays: [], fit: 'fill', styleId: 'classic', author: 'T', directory, photoId: 'abc' }), /Not a readable JPEG/);
   await fs.rm(directory, { recursive: true, force: true });
 });

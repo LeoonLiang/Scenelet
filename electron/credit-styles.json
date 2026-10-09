@@ -1,0 +1,13 @@
+{
+  "default": "classic",
+  "styles": [
+    { "id": "classic", "template": "Photo by {author} on Unsplash", "uppercase": false, "italic": false, "weight": 500, "tracking": 0, "scale": 1,
+      "family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei UI\", sans-serif" },
+    { "id": "minimal", "template": "{author} / Unsplash", "uppercase": true, "italic": false, "weight": 500, "tracking": 0.14, "scale": 0.82,
+      "family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei UI\", sans-serif" },
+    { "id": "serif", "template": "{author} — Unsplash", "uppercase": false, "italic": true, "weight": 400, "tracking": 0.01, "scale": 1.15,
+      "family": "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, \"Songti SC\", SimSun, serif" },
+    { "id": "chinese", "template": "摄影 {author} · Unsplash", "uppercase": false, "italic": false, "weight": 500, "tracking": 0.02, "scale": 1,
+      "family": "\"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif" }
+  ]
+}

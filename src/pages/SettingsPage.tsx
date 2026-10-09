@@ -5,6 +5,7 @@ import type { Theme } from '../lib/sources';
 import UpdatePanel from '../components/UpdatePanel';
 import SelectField from '../components/SelectField';
 import { languages, t, type MessageKey } from '../i18n';
+import { creditCss, creditText, styles as creditStyles } from '../lib/credit';
 
 type Props = {
   screen?: { width: number; height: number }; onRestoreBackup: () => void;
@@ -45,6 +46,12 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
           <button className={`toggle${settings.credit ? ' on' : ''}`} role="switch" aria-label={t('settings.credit')} aria-describedby="credit-description" aria-checked={settings.credit} disabled={busy}
             onClick={() => onChange({ credit: !settings.credit })}><span/></button>
         </div>
+        {settings.credit && <div className="credit-styles" role="radiogroup" aria-label={t('settings.creditStyle')}>
+          {creditStyles.map(style => <button key={style.id} role="radio" aria-checked={settings.creditStyle === style.id} className={`credit-style${settings.creditStyle === style.id ? ' selected' : ''}`} disabled={busy} onClick={() => onChange({ creditStyle: style.id })}>
+            <span className="credit-sample" aria-hidden="true"><span className="credit-mark" style={creditCss(style, 'clamp(7px, 5.4cqw, 12px)')}>{creditText(style, 'Jane Doe')}</span></span>
+            <span className="credit-style-name">{t(`settings.creditStyle.${style.id}` as MessageKey)}</span>
+          </button>)}
+        </div>}
         <div className="row">
           <strong>{t('settings.appearance')}</strong>
           <div className="segmented" role="radiogroup" aria-label={t('settings.appearance')}>

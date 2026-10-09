@@ -265,7 +265,7 @@ async function creditedFile(p, file) {
       displays: screen.getAllDisplays().map(d => ({ ...d, primary: d.id === primary })),
       // macOS always fills the screen; the fit setting only applies on Windows.
       fit: process.platform === 'darwin' ? 'fill' : state.settings.fit,
-      text: __('credit.unsplash', { author: p.author }), directory: cachePath, photoId: p.id,
+      styleId: state.settings.creditStyle, author: p.author, directory: cachePath, photoId: p.id,
     });
   } catch (error) { console.warn('Credit skipped:', error.message); return file; }
 }

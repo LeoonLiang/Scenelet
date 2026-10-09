@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { creditLayout, creditFileName, safeRect, outputSize } = require('../electron/credit-layout.cjs');
+const { creditLayout, creditFileName, creditStyle, creditText, safeRect, outputSize } = require('../electron/credit-layout.cjs');
+const creditStyles = require('../electron/credit-styles.json');
+const core = require('../electron/core.cjs');
 
 // A 4K screen at 2x with a 25pt menu bar on top and a 70pt Dock at the bottom (macOS style).
 const mac = { primary: true, scaleFactor: 2, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 25, width: 1920, height: 985 } };
@@ -80,4 +82,22 @@ test('credited copy name changes with text and layout, and is a safe file name',
   assert.notEqual(a, creditFileName('abc_123', 'src', 'Photo by B on Unsplash', layout));
   assert.notEqual(a, creditFileName('abc_123', 'src', 'Photo by A on Unsplash', { ...layout, right: layout.right - 1 }));
   assert.notEqual(a, creditFileName('abc_123', 'other', 'Photo by A on Unsplash', layout));
+});
+
+test('credit styles format the author independently of the interface language', () => {
+  assert.equal(creditText(creditStyle('classic'), ' Jane Doe '), 'Photo by Jane Doe on Unsplash');
+  assert.equal(creditText(creditStyle('minimal'), 'Jane Doe'), 'JANE DOE / UNSPLASH');
+  assert.equal(creditText(creditStyle('serif'), '林薇'), '林薇 — Unsplash');
+  assert.equal(creditText(creditStyle('chinese'), 'Jane Doe'), '摄影 Jane Doe · Unsplash');
+  assert.equal(creditStyle('nope').id, creditStyles.default);
+  for (const style of creditStyles.styles) assert.ok(style.template.includes('{author}') && style.family && style.scale > 0, style.id);
+});
+
+test('credit style setting defaults and validates', () => {
+  assert.equal(core.defaults.creditStyle, 'classic');
+  assert.equal(core.normalizeSettings({}).creditStyle, 'classic');
+  assert.equal(core.normalizeSettings({ creditStyle: 'serif' }).creditStyle, 'serif');
+  assert.equal(core.normalizeSettings({ creditStyle: 'comic' }).creditStyle, 'classic');
+  assert.equal(core.normalizeSettings({ credit: false }).credit, false);
+  assert.equal(core.normalizeSettings({}).credit, true);
 });

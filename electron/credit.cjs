@@ -3,7 +3,7 @@
 // so the main process only computes the layout and writes the resulting JPEG.
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { creditLayout, creditFileName } = require('./credit-layout.cjs');
+const { creditLayout, creditFileName, creditStyle, creditText } = require('./credit-layout.cjs');
 
 const TIMEOUT = 30000;
 
@@ -39,7 +39,7 @@ async function readJpegSize(file) {
 }
 
 // Runs in the renderer, so it must not reference anything outside its own body. Returns base64 JPEG.
-async function draw({ url, source, width, height, right, bottom, fontSize, text }) {
+async function draw({ url, source, width, height, right, bottom, fontSize, text, italic, weight, family, tracking }) {
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.src = url;
@@ -52,7 +52,10 @@ async function draw({ url, source, width, height, right, bottom, fontSize, text 
   const ctx = canvas.getContext('2d');
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
-  ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif`;
+  ctx.font = `${italic ? 'italic ' : ''}${weight} ${fontSize}px ${family}`;
+  ctx.letterSpacing = `${Math.round(tracking * fontSize * 10) / 10}px`;
+  // Letter spacing is also added after the last glyph; shift so the text still ends at the anchor.
+  right += Math.round(tracking * fontSize);
   ctx.textAlign = 'right';
   ctx.textBaseline = 'bottom';
   // Light text on dark areas, dark text on bright areas, judged from the pixels behind the text.
@@ -92,13 +95,16 @@ async function render(BrowserWindow, job) {
  * Returns the path of a credited copy of `file` (a JPEG), creating it in `directory` when needed.
  * Throws on failure; callers should fall back to the original file.
  */
-async function createCredited({ BrowserWindow, file, url, displays, fit, text, directory, photoId }) {
+async function createCredited({ BrowserWindow, file, url, displays, fit, styleId, author, directory, photoId }) {
   const [stat, size] = await Promise.all([fs.stat(file), readJpegSize(file)]);
   if (!size) throw new Error('Not a readable JPEG');
+  const style = creditStyle(styleId), text = creditText(style, author);
   const layout = creditLayout(size, displays, fit);
-  const target = path.join(directory, creditFileName(photoId, [path.basename(file), stat.size, stat.mtimeMs], text, layout));
+  const look = { italic: style.italic, weight: style.weight, family: style.family, tracking: style.tracking };
+  const job = { ...layout, fontSize: Math.max(10, Math.round(layout.fontSize * style.scale)), ...look };
+  const target = path.join(directory, creditFileName(photoId, [path.basename(file), stat.size, stat.mtimeMs], text, job));
   try { await fs.access(target); return target; } catch {}
-  const base64 = await render(BrowserWindow, { url, source: size, text, ...layout });
+  const base64 = await render(BrowserWindow, { url, source: size, text, ...job });
   if (!base64) throw new Error('Credit rendering returned no image');
   await fs.writeFile(target + '.part', Buffer.from(base64, 'base64'));
   await fs.rename(target + '.part', target);

@@ -1,9 +1,10 @@
 // Pure geometry for the photographer credit that is drawn onto a wallpaper copy.
 // Everything here works in physical screen pixels and output-image pixels, so it can be unit tested.
 const crypto = require('node:crypto');
+const creditStyles = require('./credit-styles.json');
 
 // Bump when the drawing changes so cached credited copies are regenerated.
-const VERSION = 1;
+const VERSION = 2;
 const FONT_RATIO = 0.0125; // text height relative to the primary screen height
 const MARGIN_RATIO = 0.022; // gap to the visible edge relative to the primary screen height
 
@@ -82,10 +83,19 @@ function creditLayout(image, displays, fit = 'fill') {
   };
 }
 
+// Credit styles are chosen by the user and do not follow the interface language.
+function creditStyle(id) {
+  return creditStyles.styles.find(s => s.id === id) || creditStyles.styles.find(s => s.id === creditStyles.default);
+}
+function creditText(style, author) {
+  const text = style.template.replace('{author}', String(author).trim());
+  return style.uppercase ? text.toUpperCase() : text;
+}
+
 // Stable name for the credited copy: changes when the source, text or layout changes.
 function creditFileName(photoId, source, text, layout) {
   const hash = crypto.createHash('sha256').update(JSON.stringify([VERSION, source, text, layout])).digest('hex').slice(0, 16);
   return `${photoId}-credit-${hash}.jpg`;
 }
 
-module.exports = { creditLayout, creditFileName, safeRect, drawScale, outputSize, physical };
+module.exports = { creditLayout, creditFileName, creditStyle, creditText, safeRect, drawScale, outputSize, physical };

@@ -4,15 +4,16 @@ import type { Photo } from '../types';
 import { t } from '../i18n';
 import PhotoImage from './PhotoImage';
 import { kindLabel } from '../lib/sources';
+import { creditCss, creditStyle, creditText } from '../lib/credit';
 
 type Props = {
-  screen?: { width: number; height: number }; fit: string; credit?: boolean;
+  screen?: { width: number; height: number }; fit: string; credit?: string;
   onPrevious?: () => void; onNext?: () => void; onRemove?: () => void; onRelink?: () => void;
   photo: Photo; liked: boolean; busy: boolean;
   onClose: () => void; onSetWallpaper: () => void; onFavorite: () => void; onDownload: () => void; onLink: (url?: string) => void;
 };
 
-export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, screen, fit, credit = false, onPrevious, onNext, onRemove, onRelink }: Props) {
+export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, screen, fit, credit, onPrevious, onNext, onRemove, onRelink }: Props) {
   const demo = photo.source === 'demo';
   const [crop, setCrop] = useState(false);
   const dialog = useRef<HTMLElement>(null);
@@ -46,7 +47,7 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
       <div className="preview-image">
         <div className={crop && screen ? 'desktop-crop' : 'original-preview'} style={crop && screen ? { aspectRatio: `${screen.width}/${screen.height}`, width: `min(100cqw, ${screen.width / screen.height * 100}cqh)` } : undefined}>
           <PhotoImage key={photo.id} src={photo.full} alt={photo.title} style={{ objectFit: crop ? fit === 'fill' ? 'cover' : fit === 'stretch' ? 'fill' : fit === 'center' ? 'none' : 'contain' : 'contain', ...(crop && fit === 'center' && screen ? { objectFit: 'contain' as const, width: `${photo.width / screen.width * 100}%`, height: `${photo.height / screen.height * 100}%`, maxWidth: 'none', flexShrink: 0 } : {}) }}/>
-          {crop && screen && credit && photo.source === 'unsplash' && photo.author && <span className="credit-mark" aria-hidden="true">{t('credit.unsplash', { author: photo.author })}</span>}
+          {crop && screen && credit && photo.source === 'unsplash' && photo.author && <span className="credit-mark" aria-hidden="true" style={creditCss(creditStyle(credit), 'max(7px, 1.25cqh)')}>{creditText(creditStyle(credit), photo.author)}</span>}
         </div>
       </div>
       <div className="preview-info">
