@@ -38,7 +38,7 @@ Electron main 处理官方 API、凭据、图片文件、系统壁纸、托盘�
 
 Windows 使用 Unicode SystemParametersInfo 设置桌面壁纸，并配置系统填充模式；固定 PowerShell 脚本通过环境变量接收文件路径，避免路径插入代码。当前是系统桌面统一设置，非逐显示器设置。
 
-摄影师署名（`settings.credit`，默认开启）只用于 Unsplash 照片：`electron/credit-layout.cjs` 按各显示器的物理像素、workArea（菜单栏 / Dock / 任务栏）和布局方式（macOS 固定按填充）计算所有屏幕都可见的右下角位置和副本尺寸（不放大，最大到屏幕所需像素）；`electron/credit.cjs` 从 JPEG 头读取尺寸，副本名包含原图、文字和布局的哈希，命中缓存时不再渲染，否则在隐藏的沙箱窗口通过 `framewall://cache/` 读取原图、按背景亮度选浅色或深色文字绘制并输出 JPEG。署名样式（`settings.creditStyle`）定义在 `electron/credit-styles.json`，包括文字模板、字体、字重、字距和字号倍率，主进程绘制与界面示例（`src/lib/credit.ts`）共用同一份定义；样式与界面语言无关。副本与原图同在壁纸缓存目录，受缓存上限清理；任何失败都回退到原图，不阻断换图。下载始终使用原图。
+摄影师署名只用于 Unsplash 照片：`electron/credit-layout.cjs` 按各显示器的物理像素、workArea（菜单栏 / Dock / 任务栏）和布局方式（macOS 固定按填充）计算所有屏幕都可见的右下角位置和副本尺寸（不放大，最大到屏幕所需像素）；`electron/credit.cjs` 从 JPEG 头读取尺寸，副本名包含原图、文字和布局的哈希，命中缓存时不再渲染，否则在隐藏的沙箱窗口通过 `framewall://cache/` 读取原图、按背景亮度选浅色或深色文字绘制并输出 JPEG。署名由 `settings.creditStyle` 控制（`none` 表示不印署名；早期版本的 `credit: false` 会迁移为 `none`），样式定义在 `electron/credit-styles.json`，包括文字模板、字体、字重、字距和字号倍率，主进程绘制与界面示例（`src/lib/credit.ts`）共用同一份定义；样式与界面语言无关。切换样式时 `restyleCurrent()` 用 `state.current.original` 记录的原图重新生成副本并立即重设当前壁纸，不写入历史；当前壁纸的副本和原图都不会被缓存清理删除。副本与原图同在壁纸缓存目录，受缓存上限清理；任何失败都回退到原图，不阻断换图。下载始终使用原图。
 
 `electron/native-wallpaper.cjs` 统一处理原生壁纸调用。Windows 开启 `syncLockScreen` 后，在桌面设置成功后运行固定的 `electron/lock-screen.ps1`，通过 WinRT `StorageFile.GetFileFromPathAsync` 和 `LockScreen.SetImageFileAsync` 同步同一张图片。两个异步操作均等待完成，锁屏进程最多执行 30 秒；不修改锁屏策略、不提权。使用系统 PowerShell，x86 进程在 64 位系统上通过 Sysnative 选择原生宿主。
 

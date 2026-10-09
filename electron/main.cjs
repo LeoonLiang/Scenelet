@@ -38,6 +38,8 @@ let recovery = '', indexing = false, clockRunning = false, previousQueue = null;
 const thumbnails = new Map();
 let lockScreenWarning = '';
 let lockScreenWarningNotified = false;
+// A credit style picked while another change was running; redrawn once that change finishes.
+let restylePending = false;
 const known = new Map();
 const imported = new Map();
 const topicIds = new Map();
@@ -224,7 +226,7 @@ async function trimCache() {
   for (const entry of entries.sort((a, b) => a.mtimeMs - b.mtimeMs)) {
     if (total <= state.settings.cacheLimit * 1024 * 1024) break;
     const file = path.join(cachePath, entry.file);
-    if (file === state.current?.file) continue;
+    if (file === state.current?.file || file === state.current?.original) continue;
     await fs.unlink(file); total -= entry.size;
   }
 }
@@ -257,7 +259,7 @@ async function photoFile(p) {
 // Unsplash wallpapers get a credited copy; the downloaded original stays untouched for "download".
 // Any failure falls back to the original so a credit never blocks a wallpaper change.
 async function creditedFile(p, file) {
-  if (!state.settings.credit || p.source !== 'unsplash' || !p.author) return file;
+  if (state.settings.creditStyle === 'none' || p.source !== 'unsplash' || !p.author) return file;
   try {
     const primary = screen.getPrimaryDisplay().id;
     return await credit.createCredited({
@@ -284,7 +286,7 @@ async function apply(id, stillCurrent, navigatingHistory = false) {
       // Commit desktop success before the optional lock-screen operation can stall.
       if (!navigatingHistory) previousQueue = null;
       remember(p);
-      state.current = { id, file, photo: { ...p }, appliedAt: new Date().toISOString() };
+      state.current = { id, file, original, photo: { ...p }, appliedAt: new Date().toISOString() };
       state.history = [{ id, appliedAt: state.current.appliedAt }, ...state.history].slice(0, 200);
       await save();
     });
@@ -293,6 +295,31 @@ async function apply(id, stillCurrent, navigatingHistory = false) {
     if (!lockScreenWarning) lockScreenWarningNotified = false;
     await trimCache(); publish(); return snapshot();
   } finally { applying = false; }
+}
+// Redraws the current Unsplash wallpaper in the newly chosen credit style, without adding to history.
+async function restyleCurrent() {
+  const current = state.current;
+  if (!current || current.photo?.source !== 'unsplash') return;
+  if (applying) throw new Error(__("err.applying"));
+  applying = true;
+  try {
+    setStage('apply');
+    const p = known.get(current.id) || current.photo;
+    // Reuse the undecorated original when it is still cached, so a style switch never re-downloads.
+    const original = current.original && await fs.access(current.original).then(() => current.original, () => '') || await photoFile(p);
+    setStage('apply');
+    const file = await creditedFile(p, original);
+    if (file === current.file || state.current !== current) return;
+    const result = await wallpaper.apply(file, state.settings, async () => { state.current = { ...current, file, original }; await save(); });
+    lockScreenWarning = result.lockScreen === 'failed' && state.settings.syncLockScreen ? diagnostics.redact(result.error, key) : '';
+    if (!lockScreenWarning) lockScreenWarningNotified = false;
+    await trimCache(); publish();
+  } finally { applying = false; }
+}
+// No-op when the current wallpaper already uses the chosen style (e.g. the running change picked it up).
+async function restyle() {
+  if (change || selecting || applying) { restylePending = true; return; }
+  await tracked('window', restyleCurrent).catch(() => {});
 }
 function rotationPool(settings = state.settings) {
   const selected = settings.rotationSource;
@@ -314,6 +341,8 @@ async function tracked(origin, work) {
     if (error.cancelled) finishChange(null, origin);
     else { lastError = diagnostics.redact(error.message || __('err.failed'), key); finishChange('error', origin); }
     throw error;
+  } finally {
+    if (restylePending) { restylePending = false; setImmediate(() => void restyle()); }
   }
 }
 function setStage(stage, patch = {}) {
@@ -420,7 +449,12 @@ async function saveSettings(input) {
   if (settings.language !== state.settings.language) { lastMenuKey = null; applyLanguage(settings.language); updates?.refresh(); }
   if (!settings.syncLockScreen) { lockScreenWarning = ''; lockScreenWarningNotified = false; }
   const reset = rotationClock.rotationKey(state.settings) !== rotationClock.rotationKey(settings);
-  state.settings = settings; schedule(reset); await save(); publish(warning); return snapshot();
+  const restyled = settings.creditStyle !== state.settings.creditStyle;
+  state.settings = settings; schedule(reset); await save(); publish(warning);
+  // A new credit style shows up on the current wallpaper right away (or right after a running change).
+  // Failures are reported like a failed change; the setting itself stays saved.
+  if (restyled) await restyle();
+  return snapshot();
 }
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
 // Windows tray: full-color icon. Both load 1x and 2x explicitly so packaged (asar) builds stay sharp on HiDPI screens.
@@ -493,7 +527,7 @@ function registerIPC() {
     wallpaper: ({ id }) => tracked('window', () => apply(id)), next: () => next(),
     download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
-    'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file) await fs.unlink(target); } return cacheInfo(); },
+    'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },
     'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error(__("err.linkHost")); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
   };
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`framewall:${name}`, async (event, input) => {

@@ -41,17 +41,18 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
           <button className={`toggle${settings.syncLockScreen ? ' on' : ''}`} role="switch" aria-label={t('settings.syncLockScreen')} aria-describedby="lock-screen-description" aria-checked={settings.syncLockScreen} disabled={busy}
             onClick={() => onChange({ syncLockScreen: !settings.syncLockScreen, lockScreenPrompt: false })}><span/></button>
         </div>}
-        <div className="row">
-          <div><strong>{t('settings.credit')}</strong><small id="credit-description">{t('settings.creditDesc')}</small></div>
-          <button className={`toggle${settings.credit ? ' on' : ''}`} role="switch" aria-label={t('settings.credit')} aria-describedby="credit-description" aria-checked={settings.credit} disabled={busy}
-            onClick={() => onChange({ credit: !settings.credit })}><span/></button>
+        <div className="row credit-row">
+          <div><strong id="credit-label">{t('settings.credit')}</strong><small id="credit-description">{t('settings.creditDesc')}</small></div>
         </div>
-        {settings.credit && <div className="credit-styles" role="radiogroup" aria-label={t('settings.creditStyle')}>
-          {creditStyles.map(style => <button key={style.id} role="radio" aria-checked={settings.creditStyle === style.id} className={`credit-style${settings.creditStyle === style.id ? ' selected' : ''}`} disabled={busy} onClick={() => onChange({ creditStyle: style.id })}>
-            <span className="credit-sample" aria-hidden="true"><span className="credit-mark" style={creditCss(style, 'clamp(7px, 5.4cqw, 12px)')}>{creditText(style, 'Jane Doe')}</span></span>
-            <span className="credit-style-name">{t(`settings.creditStyle.${style.id}` as MessageKey)}</span>
-          </button>)}
-        </div>}
+        <div className="credit-styles" role="radiogroup" aria-labelledby="credit-label" aria-describedby="credit-description">
+          {['none', ...creditStyles.map(style => style.id)].map(id => {
+            const style = creditStyles.find(s => s.id === id), selected = settings.creditStyle === id;
+            return <button key={id} role="radio" aria-checked={selected} className={`credit-style${selected ? ' selected' : ''}`} disabled={busy} onClick={() => { if (!selected) onChange({ creditStyle: id }); }}>
+              <span className="credit-sample" aria-hidden="true">{style && <span className="credit-mark" style={creditCss(style, 'clamp(7px, 5.4cqw, 12px)')}>{creditText(style, 'Jane Doe')}</span>}</span>
+              <span className="credit-style-name">{t(`settings.creditStyle.${id}` as MessageKey)}</span>
+            </button>;
+          })}
+        </div>
         <div className="row">
           <strong>{t('settings.appearance')}</strong>
           <div className="segmented" role="radiogroup" aria-label={t('settings.appearance')}>

@@ -98,6 +98,9 @@ test('credit style setting defaults and validates', () => {
   assert.equal(core.normalizeSettings({}).creditStyle, 'classic');
   assert.equal(core.normalizeSettings({ creditStyle: 'serif' }).creditStyle, 'serif');
   assert.equal(core.normalizeSettings({ creditStyle: 'comic' }).creditStyle, 'classic');
-  assert.equal(core.normalizeSettings({ credit: false }).credit, false);
-  assert.equal(core.normalizeSettings({}).credit, true);
+  assert.equal(core.normalizeSettings({ creditStyle: 'none' }).creditStyle, 'none');
+  // Settings saved before styles existed only have `credit: false`; a stale flag next to a style is ignored.
+  assert.equal(core.normalizeSettings({ credit: false }).creditStyle, 'none');
+  assert.equal(core.normalizeSettings({ credit: false, creditStyle: 'serif' }).creditStyle, 'serif');
+  assert.equal('credit' in core.normalizeSettings({ credit: true }), false);
 });
