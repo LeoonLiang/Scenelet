@@ -190,7 +190,7 @@ const en: Messages = {
   'update.check': 'Check for updates',
   'update.install': 'Restart and install',
   'update.download': 'Download update',
-  'update.openInstaller': 'Open installer',
+  'update.openInstaller': 'Quit and open installer',
   'update.showDownload': 'Show downloaded file',
   'update.releases': 'View releases',
 

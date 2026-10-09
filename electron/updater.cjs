@@ -71,6 +71,8 @@ module.exports = function createUpdater({ app, shell, notify, beforeInstall, dis
     if (process.platform === 'darwin') {
       const error = await shell.openPath(downloadedFile);
       if (error) throw new Error(error);
+      await beforeInstall();
+      app.quit();
     } else shell.showItemInFolder(downloadedFile);
   }
   function start() { if (mode === 'disabled') return; startup = setTimeout(() => void check(), 30000); timer = setInterval(() => void check(), 6 * 60 * 60000); }
