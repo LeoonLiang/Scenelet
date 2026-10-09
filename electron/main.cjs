@@ -14,6 +14,7 @@ const { withRetry, isTransient } = require('./retry.cjs');
 const updateCore = require('./update-core.cjs');
 const trayStatus = require('./tray-status.cjs');
 const i18n = require('./i18n.cjs');
+const credit = require('./credit.cjs');
 const __ = i18n.t;
 let updates;
 // Keep the existing data location when changing the public application name.
@@ -253,15 +254,32 @@ async function photoFile(p) {
   await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
   return file;
 }
+// Unsplash wallpapers get a credited copy; the downloaded original stays untouched for "download".
+// Any failure falls back to the original so a credit never blocks a wallpaper change.
+async function creditedFile(p, file) {
+  if (!state.settings.credit || p.source !== 'unsplash' || !p.author) return file;
+  try {
+    const primary = screen.getPrimaryDisplay().id;
+    return await credit.createCredited({
+      BrowserWindow, file, url: `framewall://cache/${encodeURIComponent(path.basename(file))}`,
+      displays: screen.getAllDisplays().map(d => ({ ...d, primary: d.id === primary })),
+      // macOS always fills the screen; the fit setting only applies on Windows.
+      fit: process.platform === 'darwin' ? 'fill' : state.settings.fit,
+      text: __('credit.unsplash', { author: p.author }), directory: cachePath, photoId: p.id,
+    });
+  } catch (error) { console.warn('Credit skipped:', error.message); return file; }
+}
 // Keep the opt-in smoke check desktop-only so its existing restore remains complete.
 const setNativeWallpaper = wallpaper.setDesktop;
 async function apply(id, stillCurrent, navigatingHistory = false) {
   if (applying) throw new Error(__("err.applying"));
   applying = true;
   try {
-    const p = getPhoto(id); const file = await photoFile(p);
-    if (stillCurrent && !stillCurrent()) throw Object.assign(new Error(__("err.applyCancelled")), { cancelled: true });
+    const p = getPhoto(id);
+    const original = await photoFile(p);
     setStage('apply');
+    const file = await creditedFile(p, original);
+    if (stillCurrent && !stillCurrent()) throw Object.assign(new Error(__("err.applyCancelled")), { cancelled: true });
     const result = await wallpaper.apply(file, state.settings, async () => {
       // Commit desktop success before the optional lock-screen operation can stall.
       if (!navigatingHistory) previousQueue = null;
@@ -491,9 +509,11 @@ function registerPhotos() {
   });
 }
 async function servePhoto(request) {
-  const url = new URL(request.url), id = url.pathname.slice(1);
-  let file = imported.get(id);
-  if (!file || !['photo', 'thumb'].includes(url.hostname)) return new Response('Not found', { status: 404 });
+  const url = new URL(request.url), id = decodeURIComponent(url.pathname.slice(1));
+  // Downloaded Unsplash originals, only for the credit renderer.
+  const cached = url.hostname === 'cache' && /^[a-zA-Z0-9_-]{1,140}\.jpg$/.test(id) ? path.join(cachePath, id) : '';
+  let file = cached || imported.get(id);
+  if (!file || !['photo', 'thumb', 'cache'].includes(url.hostname)) return new Response('Not found', { status: 404 });
   try {
     if (url.hostname === 'thumb') {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return new Response('Not found', { status: 404 });

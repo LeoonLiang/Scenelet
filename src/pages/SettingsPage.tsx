@@ -41,6 +41,11 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
             onClick={() => onChange({ syncLockScreen: !settings.syncLockScreen, lockScreenPrompt: false })}><span/></button>
         </div>}
         <div className="row">
+          <div><strong>{t('settings.credit')}</strong><small id="credit-description">{t('settings.creditDesc')}</small></div>
+          <button className={`toggle${settings.credit ? ' on' : ''}`} role="switch" aria-label={t('settings.credit')} aria-describedby="credit-description" aria-checked={settings.credit} disabled={busy}
+            onClick={() => onChange({ credit: !settings.credit })}><span/></button>
+        </div>
+        <div className="row">
           <strong>{t('settings.appearance')}</strong>
           <div className="segmented" role="radiogroup" aria-label={t('settings.appearance')}>
             {themes.map(item => <button key={item.id} role="radio" aria-checked={theme === item.id} className={theme === item.id ? 'selected' : ''} onClick={() => setTheme(item.id)}>{t(item.key)}</button>)}

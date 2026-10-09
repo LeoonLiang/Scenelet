@@ -360,7 +360,9 @@ progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accen
 .image-message { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; color: var(--muted); }
 .image-loading { position: absolute; pointer-events: none; font-size: 12px; color: var(--muted); }
 .original-preview { width: 100%; height: 100%; }
-.desktop-crop { background: #000; overflow: hidden; }
+.desktop-crop { position: relative; background: #000; overflow: hidden; container-type: size; }
+/* Mirrors the credit drawn onto the wallpaper (electron/credit-layout.cjs): 1.25% text height, 2.2% margin. */
+.credit-mark { position: absolute; right: 2.2cqh; bottom: 2.2cqh; font-size: max(7px, 1.25cqh); font-weight: 500; line-height: 1; color: rgba(255, 255, 255, .86); text-shadow: 0 0 3px rgba(0, 0, 0, .45); white-space: nowrap; pointer-events: none; }
 .preview-navigation, .library-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
 .library-actions .helper { width: 100%; }
 .recent-photos { display: flex; gap: 12px; overflow-x: auto; padding: 14px 0; }

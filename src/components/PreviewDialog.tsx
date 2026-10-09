@@ -6,13 +6,13 @@ import PhotoImage from './PhotoImage';
 import { kindLabel } from '../lib/sources';
 
 type Props = {
-  screen?: { width: number; height: number }; fit: string;
+  screen?: { width: number; height: number }; fit: string; credit?: boolean;
   onPrevious?: () => void; onNext?: () => void; onRemove?: () => void; onRelink?: () => void;
   photo: Photo; liked: boolean; busy: boolean;
   onClose: () => void; onSetWallpaper: () => void; onFavorite: () => void; onDownload: () => void; onLink: (url?: string) => void;
 };
 
-export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, screen, fit, onPrevious, onNext, onRemove, onRelink }: Props) {
+export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpaper, onFavorite, onDownload, onLink, screen, fit, credit = false, onPrevious, onNext, onRemove, onRelink }: Props) {
   const demo = photo.source === 'demo';
   const [crop, setCrop] = useState(false);
   const dialog = useRef<HTMLElement>(null);
@@ -46,6 +46,7 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
       <div className="preview-image">
         <div className={crop && screen ? 'desktop-crop' : 'original-preview'} style={crop && screen ? { aspectRatio: `${screen.width}/${screen.height}`, width: `min(100cqw, ${screen.width / screen.height * 100}cqh)` } : undefined}>
           <PhotoImage key={photo.id} src={photo.full} alt={photo.title} style={{ objectFit: crop ? fit === 'fill' ? 'cover' : fit === 'stretch' ? 'fill' : fit === 'center' ? 'none' : 'contain' : 'contain', ...(crop && fit === 'center' && screen ? { objectFit: 'contain' as const, width: `${photo.width / screen.width * 100}%`, height: `${photo.height / screen.height * 100}%`, maxWidth: 'none', flexShrink: 0 } : {}) }}/>
+          {crop && screen && credit && photo.source === 'unsplash' && photo.author && <span className="credit-mark" aria-hidden="true">{t('credit.unsplash', { author: photo.author })}</span>}
         </div>
       </div>
       <div className="preview-info">

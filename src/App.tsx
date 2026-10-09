@@ -233,7 +233,7 @@ export default function App() {
         onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}/>
     </main>
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
-    {selected && <PreviewDialog screen={primaryScreen} fit={state.settings.fit}
+    {selected && <PreviewDialog screen={primaryScreen} fit={state.settings.fit} credit={state.settings.credit}
       onPrevious={selectedIndex > 0 ? () => setSelected(selection[selectedIndex - 1]) : undefined}
       onNext={selectedIndex >= 0 && selectedIndex < selection.length - 1 ? () => setSelected(selection[selectedIndex + 1]) : undefined}
       onRemove={() => void removeSelected()}

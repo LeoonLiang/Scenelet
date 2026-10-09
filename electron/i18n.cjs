@@ -9,6 +9,7 @@ const messages = {
     'app.tooltip': '拾景 Scenelet',
     'app.startFailed': '拾景启动失败',
     'photo.mine': '我的照片',
+    'credit.unsplash': '摄影 {author} · Unsplash',
     'source.discover': '全部 Unsplash 照片',
 
     'tray.rotating': ' · 自动轮换中',
@@ -147,6 +148,7 @@ const messages = {
     'app.tooltip': 'Scenelet',
     'app.startFailed': 'Scenelet failed to start',
     'photo.mine': 'My photo',
+    'credit.unsplash': 'Photo by {author} on Unsplash',
     'source.discover': 'All Unsplash photos',
 
     'tray.rotating': ' · rotating',

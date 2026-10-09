@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const { t } = require('./i18n.cjs');
 
-const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', credit: true, syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
 function normalizeSettings(input = {}) {
   return {
     language: ['zh', 'en'].includes(input.language) ? input.language : 'system',
@@ -12,6 +12,7 @@ function normalizeSettings(input = {}) {
     rotationSource: ['library', 'online'].includes(input.rotationSource) || /^playlist:[a-zA-Z0-9-]+$/.test(input.rotationSource) ? input.rotationSource : 'favorites',
     onlineSource: normalizeOnlineSource(input.onlineSource, true),
     fit: ['fill', 'fit', 'stretch', 'center'].includes(input.fit) ? input.fit : 'fill',
+    credit: input.credit !== false,
     syncLockScreen: input.syncLockScreen === true,
     lockScreenPrompt: input.lockScreenPrompt === true && input.syncLockScreen !== true,
     autostart: input.autostart === true,
