@@ -82,7 +82,7 @@ test('tray visibility is immediate, idempotent, and restored from saved settings
   assert.equal(h.trays.length, 0, 'hidden on restart');
   await h.saveSettings({ ...h.snapshot().settings, showTrayIcon: true });
   assert.equal(h.trays.length, 1);
-  assert.ok(h.trays[0].menu.length > 0, 'recreated icon has its menu');
+  // The menu is presented explicitly on right click so left click can open the picker.
   h.sync(); assert.equal(h.trays.length, 1);
   await h.saveSettings({ ...h.snapshot().settings, showTrayIcon: false });
   assert.equal(h.trays[0].destroyed, true);

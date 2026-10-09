@@ -1,5 +1,22 @@
 // Source dictionary: every key the UI uses is defined here first. Other languages must match these keys (checked by tsc).
 const zh = {
+  "batch.collapse": "收起设置",
+  'batch.systemLayout': '填充示意（系统布局）',
+  'batch.desktopPreview': '壁纸屏幕预览',
+  'batch.primaryDisplay': '主屏幕预览',
+  'batch.screenPreview': '屏幕预览',
+  "batch.title": "挑一张喜欢的",
+  "batch.changeSource": "更换来源",
+  "batch.candidates": "本批照片",
+  "batch.empty": "这里还没有合适的照片，试试更换来源或放宽筛选。",
+  "batch.refresh": "换一批",
+  "batch.random": "随机一张",
+  "batch.apply": "设为壁纸",
+  "batch.hint": "点击缩略图预览，选好后设为壁纸。只有「换一批」会更新这批照片。",
+  "batch.load": "加载候选照片",
+  "batch.choose": "保存并收起",
+  "batch.chooseHint": "选好来源后先看看照片，再决定用哪一张。",
+
   "import.title": "导入照片",
   "import.description": "从本地添加，或找回朋友分享的那张壁纸。",
   "import.local": "本地照片或文件夹",
@@ -109,7 +126,7 @@ const zh = {
   'step.settings': '保存偏好',
   'step.start': '开始换壁纸（{kind}）',
   'step.browseSource': '浏览来源',
-  'step.next': '获取并设置下一张壁纸',
+  'step.next': '随机选择并设置壁纸',
   'step.favorite': '收藏照片',
   'step.import': '导入本地照片',
   'step.loadMore': '加载下一页照片',
@@ -129,7 +146,7 @@ const zh = {
 
   'notice.keySaved': 'Key 已加密保存。接下来选择照片来源。',
   'notice.started': '第一张壁纸已设置，自动换图已开启。',
-  'notice.next': '已换下一张。',
+  'notice.next': '已随机更换壁纸。',
   'notice.importSkipped': '{count} 张无法读取的文件已跳过，请检查文件格式。',
   'notice.webImported': '本次预览导入成功。桌面版会保存照片索引。',
   'notice.copied': '错误详情已复制。',
@@ -141,7 +158,7 @@ const zh = {
   'common.back': '返回',
   'notice.photoSaved': '照片已保存。',
 
-  'home.description': '选一个照片来源，拾景会按间隔自动换壁纸。',
+  'home.description': '选好来源，看看这一批风景，把喜欢的一张留在桌面。',
   'home.manageKey': '管理 Key',
   'home.chooseSource': '选择来源',
 
@@ -318,7 +335,7 @@ const zh = {
   'bar.pause': '暂停换图',
   'bar.resume': '继续换图',
   'bar.changing': '换图中',
-  'bar.next': '下一张',
+  'bar.next': '随机一张',
   'bar.peek': '预览桌面',
   'bar.peekHint': '收起所有窗口看看桌面，点拾景图标就能回来',
 };

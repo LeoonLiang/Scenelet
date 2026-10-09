@@ -50,10 +50,11 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
       folder(value) { state.folders = [value]; },
       async bigLibrary(count) {
         const original = state.photos[0];
-        for (let i = 0; i < count; i++) state.photos.push({ ...original, id: 'virtual-' + i, title: 'Photo ' + i });
+        for (let i = 0; i < count; i++) { const photo = { ...original, id: 'virtual-' + i, title: 'Photo ' + i }; state.photos.push(photo); known.set(photo.id, photo); }
         publish();
       },
-      stop() { clearInterval(timer); tray?.destroy(); }
+      openTray: async () => { syncTray(); await toggleTrayWindow(); return trayWindow; },
+      stop() { clearInterval(timer); tray?.destroy(); closing = true; trayWindow?.destroy(); }
     };`, context, { filename: entry });
   const api = context.module.exports;
   await fs.mkdir(output, { recursive: true });
@@ -104,6 +105,78 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
     throw new Error('UI condition timed out: ' + code);
   };
   await until(`!!document.querySelector('.sidebar')`);
+  await until(`!!document.querySelector('.photo-batch')`);
+  await until(`document.querySelectorAll('.batch-thumb').length === 12`);
+  await until(`!!document.querySelector('.monitor-screen')`);
+  const displayRatio = await run(`(() => { const screen = document.querySelector('.monitor-screen'); const r = screen.getBoundingClientRect(); return { actual: r.width / r.height, expected: Number(screen.dataset.screenWidth) / Number(screen.dataset.screenHeight) }; })()`);
+  assert.ok(Math.abs(displayRatio.actual - displayRatio.expected) < .01, 'mock display preserves the physical display ratio');
+  win.setSize(1000, 760);
+  await until(`innerWidth === 1000`);
+  assert.equal(await run(`(() => { const monitor = document.querySelector('.monitor-device').getBoundingClientRect(); const stage = document.querySelector('.monitor-stage').getBoundingClientRect(); return monitor.width > 0 && monitor.left >= stage.left && monitor.right <= stage.right && monitor.top >= stage.top && monitor.bottom <= stage.bottom; })()`), true, 'monitor stays inside the card after resizing');
+  win.setSize(1440, 960);
+  await until(`innerWidth === 1440`);
+
+  const beforePick = applied;
+  const batchIds = await run(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`);
+  await run(`document.querySelectorAll('.batch-thumb')[1].click()`);
+  await until(`document.querySelectorAll('.batch-thumb')[1].getAttribute('aria-pressed') === 'true'`);
+  assert.equal(applied, beforePick, 'selecting a thumbnail does not change wallpaper');
+  await run(`document.querySelector('.batch-random').click()`);
+  await until(`document.querySelectorAll('.batch-thumb')[1].getAttribute('aria-pressed') === 'false'`);
+  assert.deepEqual(await run(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`), batchIds);
+  assert.equal(applied, beforePick, 'random preview does not change wallpaper');
+  await run(`document.querySelector('.batch-apply').click()`);
+  for (let i = 0; i < 100 && applied === beforePick; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  await until(`!document.querySelector('.batch-apply').disabled`);
+  assert.equal(applied, beforePick + 1);
+  await run(`document.querySelector('.batch-refresh').click()`);
+  await until(`document.querySelectorAll('.batch-thumb').length === 12 && !document.querySelector('.batch-refresh').disabled && JSON.stringify([...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)) !== ${JSON.stringify(JSON.stringify(batchIds))}`);
+  assert.notDeepEqual(await run(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`), batchIds);
+  await until(`document.querySelectorAll('.batch-thumb').length === 12 && document.querySelector('.batch-preview img')?.naturalWidth > 0`);
+  await run(`document.querySelector('.source-summary').click()`);
+  await until(`!!document.querySelector('.source-panel')`);
+  assert.equal(await run(`document.querySelectorAll('.batch-thumb').length`), 12, 'source editor keeps the home candidates visible');
+  await run(`document.querySelector('.source-collapse').click()`);
+  await until(`!document.querySelector('.source-panel')`);
+  await run(`document.querySelector('.source-summary').click()`);
+  await until(`!!document.querySelector('.source-panel')`);
+  const beforeSource = applied;
+  await run(`document.querySelector('.source-start .primary').click()`);
+  await until(`!!document.querySelector('.source-summary') && !document.querySelector('.source-panel') && document.querySelectorAll('.batch-thumb').length === 12`);
+  assert.equal(applied, beforeSource, 'confirming a source collapses controls without changing wallpaper');
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await fs.writeFile(path.join(output, 'home-batch.png'), (await win.webContents.capturePage()).toPNG());
+  const popup = await api.openTray();
+  const trayRun = code => popup.webContents.executeJavaScript(code);
+  const trayUntil = async code => { for (let i = 0; i < 100; i++) { if (await trayRun(code)) return; await new Promise(resolve => setTimeout(resolve, 50)); } throw new Error('Tray condition timed out: ' + code); };
+  await trayUntil(`document.querySelectorAll('.batch-thumb').length === 12`);
+  assert.equal(await trayRun(`!!document.querySelector('.monitor-device')`), false, 'tray keeps its compact image preview');
+  const homeIds = await run(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`);
+  assert.deepEqual(await trayRun(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`), homeIds);
+  await trayRun(`document.querySelectorAll('.batch-thumb')[2].click()`);
+  await until(`document.querySelectorAll('.batch-thumb')[2].getAttribute('aria-pressed') === 'true'`);
+  popup.hide(); await api.openTray();
+  assert.deepEqual(await trayRun(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`), homeIds, 'reopening preserves the batch');
+  assert.equal(await trayRun(`document.querySelectorAll('.batch-thumb')[2].getAttribute('aria-pressed')`), 'true', 'reopening preserves the selection');
+  await trayUntil(`document.querySelector('.batch-preview img')?.naturalWidth > 0`);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await fs.writeFile(path.join(output, 'tray-batch.png'), (await popup.webContents.capturePage()).toPNG());
+  assert.equal(await trayRun(`document.documentElement.scrollWidth <= innerWidth`), true, 'tray has no horizontal overflow');
+  await trayRun(`document.querySelector('.batch-refresh').click()`);
+  await trayUntil(`document.querySelectorAll('.batch-thumb').length === 12 && !document.querySelector('.batch-refresh').disabled && JSON.stringify([...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)) !== ${JSON.stringify(JSON.stringify(homeIds))}`);
+  const refreshedIds = await trayRun(`[...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)`);
+  assert.notDeepEqual(refreshedIds, homeIds);
+  await until(`JSON.stringify([...document.querySelectorAll('.batch-thumb')].map(b => b.dataset.photoId)) === ${JSON.stringify(JSON.stringify(refreshedIds))}`);
+  await trayRun(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(popup.isVisible(), false, 'Escape closes the tray picker');
+
+  await run(`document.querySelector('.source-summary').click()`);
+  await until(`!!document.querySelector('.source-panel')`);
+  await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('我的图库')).click()`);
+  await until(`!!document.querySelector('.page-actions .primary')`);
+  await run(`document.querySelector('.page-actions .primary').click()`);
+  await until(`!!document.querySelector('.source-summary') && !document.querySelector('.source-panel') && document.querySelectorAll('.batch-thumb').length === 12`);
   await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('我的图库')).click()`);
   await until(`document.querySelectorAll('.photo-card').length > 0`);
   assert.ok(await run(`document.querySelectorAll('.photo-card').length < 60`), '1000 photos render only visible rows');

@@ -1,6 +1,24 @@
 import type { Messages } from './index';
 
+
 const en: Messages = {
+  "batch.collapse": "Collapse settings",
+  'batch.systemLayout': 'Fill illustration (system layout)',
+  'batch.desktopPreview': 'Wallpaper display preview',
+  'batch.primaryDisplay': 'Primary display preview',
+  'batch.screenPreview': 'Display preview',
+  "batch.title": "Find your next view",
+  "batch.changeSource": "Change source",
+  "batch.candidates": "Photo candidates",
+  "batch.empty": "No matching photos yet. Try another source or broader filters.",
+  "batch.refresh": "Refresh batch",
+  "batch.random": "Random pick",
+  "batch.apply": "Set wallpaper",
+  "batch.hint": "Select a thumbnail to preview, then set your wallpaper. Refresh batch brings in new photos.",
+  "batch.load": "Loading photo candidates",
+  "batch.choose": "Save and collapse",
+  "batch.chooseHint": "Browse your source first, then choose a photo for your desktop.",
+
   "import.title": "Import photos",
   "import.description": "Add your own photos or bring in a wallpaper from a friend.",
   "import.local": "Local photos or folder",
@@ -110,7 +128,7 @@ const en: Messages = {
   'step.settings': 'Saving settings',
   'step.start': 'Starting wallpaper rotation ({kind})',
   'step.browseSource': 'Browsing source',
-  'step.next': 'Getting the next wallpaper',
+  'step.next': 'Choosing a random wallpaper',
   'step.favorite': 'Favoriting photo',
   'step.import': 'Importing local photos',
   'step.loadMore': 'Loading more photos',
@@ -130,7 +148,7 @@ const en: Messages = {
 
   'notice.keySaved': 'Key saved and encrypted. Now pick a photo source.',
   'notice.started': 'First wallpaper set. Auto rotation is on.',
-  'notice.next': 'Switched to the next photo.',
+  'notice.next': 'Set a random wallpaper.',
   'notice.importSkipped': 'Skipped {count} unreadable files. Check their format.',
   'notice.webImported': 'Imported for this preview. The desktop app keeps a photo index.',
   'notice.copied': 'Error details copied.',
@@ -142,7 +160,7 @@ const en: Messages = {
   'common.back': 'Back',
   'notice.photoSaved': 'Photo saved.',
 
-  'home.description': 'Pick a photo source and Scenelet will change your wallpaper on a schedule.',
+  'home.description': 'Browse a batch from your favorite source and choose a view for your desktop.',
   'home.manageKey': 'Manage key',
   'home.chooseSource': 'Choose source',
 
@@ -319,7 +337,7 @@ const en: Messages = {
   'bar.pause': 'Pause rotation',
   'bar.resume': 'Resume rotation',
   'bar.changing': 'Changing',
-  'bar.next': 'Next',
+  'bar.next': 'Random wallpaper',
   'bar.peek': 'Preview desktop',
   'bar.peekHint': 'Hide all windows to see your desktop. Click the Scenelet icon to come back.',
 };

@@ -411,3 +411,71 @@ progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accen
 .download-directory-row > div { min-width: 0; }
 .download-directory-row .button { flex-shrink: 0; }
 .download-directory { overflow-wrap: anywhere; }
+
+/* A stable batch shared by the home page and the menu-bar picker. */
+.source-summary { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px 18px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); text-align: left; }
+.source-summary > span { display: flex; gap: 12px; align-items: center; color: var(--muted); }
+.source-summary strong { color: var(--text); }
+.photo-batch { padding: 18px; margin-bottom: 20px; }
+.batch-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.batch-header > div { display: flex; gap: 12px; align-items: baseline; min-width: 0; }
+.batch-header span { color: var(--muted); font-size: 12px; }
+.batch-header strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-preview { position: relative; height: clamp(260px, 38vh, 440px); overflow: hidden; border-radius: 12px; background: var(--viewer-bg); }
+.batch-preview .smart-image, .batch-preview .smart-image img { width: 100%; height: 100%; }
+.batch-preview .smart-image img { object-fit: contain; }
+.batch-heart { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: white; background: #14221c66; backdrop-filter: blur(12px); }
+.batch-heart.liked { color: #ffb9ac; }
+.batch-credit { position: absolute; bottom: 0; left: 0; right: 0; padding: 36px 18px 14px; background: linear-gradient(transparent, #000b); color: white; pointer-events: none; }
+.batch-credit strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
+.batch-credit span { font-size: 11px; opacity: .9; }
+.batch-credit button { color: inherit; pointer-events: auto; }
+.batch-credit button:hover { text-decoration: underline; }
+.batch-credit svg { vertical-align: middle; }
+.batch-thumbnails { display: flex; gap: 10px; overflow-x: auto; padding: 12px 2px 8px; scrollbar-width: thin; }
+.batch-thumb { position: relative; flex: 0 0 98px; height: 68px; border-radius: 8px; overflow: hidden; border: 2px solid transparent; opacity: .7; }
+.batch-thumb:hover { opacity: 1; }
+.batch-thumb[aria-pressed=true] { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 2px var(--accent-ring); }
+.batch-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.batch-thumb span { position: absolute; bottom: 3px; right: 5px; font-size: 10px; color: white; text-shadow: 0 1px 3px black; }
+.batch-actions { display: flex; gap: 8px; align-items: center; padding-top: 10px; }
+.batch-actions .batch-apply { margin-left: auto; min-width: 120px; }
+.batch-hint { font-size: 11px; color: var(--muted); margin-top: 12px; }
+.batch-empty { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; color: var(--muted); padding: 24px; background: var(--hover); border-radius: 12px; }
+.tray-shell { padding: 14px; min-height: 100vh; }
+.tray-shell .photo-batch { padding: 0; margin: 0; }
+.tray-shell .batch-preview { height: 330px; }
+.tray-shell .batch-thumb { flex-basis: 91px; height: 68px; }
+.tray-shell .batch-header { margin-bottom: 10px; }
+.tray-shell .batch-actions .button { padding: 9px 12px; }
+.tray-shell .batch-actions .batch-apply { min-width: 110px; }
+.tray-shell .batch-hint, .tray-shell .batch-credit strong { display: none; }
+.tray-status { padding: 8px 4px; color: var(--muted); font-size: 11px; }
+.tray-shell .toast { left: 50%; bottom: 12px; max-width: calc(100% - 28px); }
+.source-panel > .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.source-collapse { flex-shrink: 0; }
+.source-summary[aria-expanded=true] { margin-bottom: 10px; }
+.source-summary[aria-expanded=true] > span:last-child svg { transform: rotate(-90deg); }
+.current-wallpaper-details { margin: 16px 0 12px; }
+.current-wallpaper-details > summary { color: var(--muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.current-wallpaper-details .now-showing { margin-top: 12px; }
+
+/* Home renders the selected wallpaper inside a monitor with the user's display ratio. */
+.batch-preview.batch-desktop-preview { height: auto; overflow: visible; background: transparent; }
+.desktop-preview { margin: 0; }
+.monitor-stage { height: clamp(240px, 42vh, 460px); padding: 18px 36px 12px; box-sizing: content-box; container-type: size; display: grid; place-items: center; border-radius: 12px; background: radial-gradient(ellipse at 50% 85%, var(--accent-soft), transparent 65%), var(--hover); }
+.monitor-device { width: min(100cqw, calc((100cqh - 58px) * var(--display-ratio))); max-width: 100%; }
+.monitor-frame { position: relative; padding: 7px 7px 0; border-radius: 12px; background: linear-gradient(145deg, #3a3d3e, #16191a 60%, #303334); border: 1px solid #424646; box-shadow: 0 16px 28px -15px #0008, 0 0 0 1px #0002; }
+.monitor-screen { position: relative; width: 100%; aspect-ratio: var(--display-ratio); background: #000; border-radius: 5px; overflow: hidden; }
+.monitor-screen > .smart-image { position: absolute; inset: 0; }
+.monitor-chin { height: 12px; display: flex; align-items: center; justify-content: flex-end; padding-right: 5px; }
+.monitor-chin i { width: 3px; height: 3px; border-radius: 50%; background: #b4c9c0; box-shadow: 0 0 4px #a9d2bc66; }
+.monitor-stand { width: 13%; min-width: 30px; max-width: 90px; height: 24px; margin: 0 auto; background: linear-gradient(90deg, #555b5c, #a2a7a6 42%, #747a7a); clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%); }
+.monitor-foot { width: 34%; min-width: 64px; max-width: 220px; height: 8px; margin: 0 auto; background: linear-gradient(#a5aaa8, #636a68); border-radius: 50% 50% 4px 4px; box-shadow: 0 5px 8px #0002; }
+.desktop-preview figcaption { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 12px 0 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.batch-desktop-preview .batch-heart { background: var(--surface); color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+.batch-desktop-preview .batch-heart.liked { color: var(--like); }
+.batch-desktop-preview .batch-credit { position: static; padding: 4px 0 0; background: none; color: var(--text); text-align: center; }
+.batch-desktop-preview .batch-credit strong { font-size: 12px; }
+.batch-desktop-preview .batch-credit span { color: var(--muted); }
+@media (max-width: 1100px) { .monitor-stage { padding-left: 18px; padding-right: 18px; } }

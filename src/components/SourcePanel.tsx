@@ -1,4 +1,4 @@
-import { Aperture, ArrowRight, FolderOpen, Heart, Image, LoaderCircle, Mountain, Play } from 'lucide-react';
+import { Aperture, ArrowRight, ChevronUp, FolderOpen, Heart, Image, LoaderCircle, Mountain } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { OnlineSource } from '../types';
 import { tags } from '../data';
@@ -9,8 +9,7 @@ import SelectField from './SelectField';
 type Props = {
   draft: OnlineSource; setDraft: (s: OnlineSource | ((s: OnlineSource) => OnlineSource)) => void;
   savedSources: OnlineSource[]; favorites: number; busy: boolean; initialized: boolean;
-  filters: ReactNode; onBrowse: () => void; onStart: () => void; onImport: () => void; onOpenFavorites: () => void;
-  fixed?: boolean;
+  filters: ReactNode; onBrowse: () => void; onStart: () => void; onImport: () => void; onOpenFavorites: () => void; onCollapse: () => void;
 };
 
 const kinds: { kind: string; Icon: typeof Mountain; hint?: MessageKey }[] = [
@@ -21,13 +20,13 @@ const kinds: { kind: string; Icon: typeof Mountain; hint?: MessageKey }[] = [
   { kind: 'library', Icon: FolderOpen, hint: 'source.hint.library' },
 ];
 
-export default function SourcePanel({ draft, setDraft, savedSources, favorites, busy, initialized, filters, onBrowse, onStart, onImport, onOpenFavorites, fixed }: Props) {
+export default function SourcePanel({ draft, setDraft, savedSources, favorites, busy, initialized, filters, onBrowse, onStart, onImport, onOpenFavorites, onCollapse }: Props) {
   const local = isLocalKind(draft.kind);
   const category = ['search', 'topic', 'discover'].includes(draft.kind);
-  return <section className="panel source-panel">
+  return <section className="panel source-panel" id="home-source-settings">
     <header className="panel-head">
-      <h2>{t('source.title')}</h2>
-      <p>{t('source.desc')}</p>
+      <div><h2>{t('source.title')}</h2><p>{t('source.desc')}</p></div>
+      <button className="text-button source-collapse" onClick={onCollapse}>{t('batch.collapse')} <ChevronUp size={14}/></button>
     </header>
 
     <div className="source-choices" role="radiogroup" aria-label={t('source.title')}>
@@ -76,9 +75,9 @@ export default function SourcePanel({ draft, setDraft, savedSources, favorites, 
     {filters}
 
     <footer className="source-start">
-      <p><strong>{t(local ? 'source.localHint' : 'source.onlineHint')}</strong>{t('source.applyNote')}</p>
+      <p>{t('batch.chooseHint')}</p>
       <button className="button secondary" disabled={busy} onClick={onBrowse}>{t('source.browse')}</button>
-      <button className="button primary" disabled={busy || !initialized} onClick={onStart}>{busy ? <LoaderCircle className="spin" size={15}/> : <Play size={15}/>}{t(fixed ? 'source.startOnce' : 'source.start')}</button>
+      <button className="button primary" disabled={busy || !initialized} onClick={onStart}>{busy ? <LoaderCircle className="spin" size={15}/> : <ArrowRight size={15}/>}{t('batch.choose')}</button>
     </footer>
   </section>;
 }

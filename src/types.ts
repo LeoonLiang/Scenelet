@@ -3,10 +3,17 @@ export type OnlineSource = { kind: string; value: string; name: string };
 export type UpdateStatus = { mode: 'automatic' | 'manual' | 'disabled'; state: 'idle' | 'checking' | 'current' | 'downloading' | 'available' | 'downloaded' | 'ready' | 'error'; currentVersion: string; version: string; percent: number; message: string; url: string; packageType?: 'dmg' | 'zip' };
 export type Settings = { language: 'system' | 'zh' | 'en'; interval: number; rotation: boolean; order: string; rotationSource: string; fit: string; creditStyle: string; syncLockScreen: boolean; lockScreenPrompt: boolean; autostart: boolean; minimizeToTray: boolean; showTrayIcon: boolean; downloadDirectory: string; quality: string; cacheLimit: number; orientation: string; minWidth: number; onlineSource: OnlineSource; settingsRevision?: number };
 export type Playlist = { id: string; name: string; photoIds: string[] };
-export type AppState = { downloadDirectory?: string; previousAvailable?: boolean; recovery?: string; nextRotationAt?: number | null; photos: Photo[]; favorites: string[]; playlists: Playlist[]; history: { id: string; appliedAt: string }[]; current: { id: string; appliedAt: string; photo?: Photo } | null; settings: Settings; connected: boolean; desktop: boolean; platform: string; screens: { id: number; width: number; height: number; primary: boolean }[]; error?: string; lockScreenWarning?: string; importFailed?: number };
+export type AppState = { wallpaperWidth?: number; downloadDirectory?: string; previousAvailable?: boolean; recovery?: string; nextRotationAt?: number | null; photos: Photo[]; favorites: string[]; playlists: Playlist[]; history: { id: string; appliedAt: string }[]; current: { id: string; appliedAt: string; photo?: Photo } | null; settings: Settings; connected: boolean; desktop: boolean; platform: string; screens: { id: number; width: number; height: number; primary: boolean }[]; error?: string; lockScreenWarning?: string; importFailed?: number };
 export type Query = { kind: string; value: string; page: number; sort: string; orientation: string; minWidth: number };
 export type QueryResult = { photos: Photo[]; hasMore: boolean; nextPage: number; remaining: string | null };
+export type PhotoBatchState = { revision: number; key: string; photos: Photo[]; selectedId: string };
 export interface DesktopAPI {
+  batch(input?: { refresh?: boolean }): Promise<PhotoBatchState>;
+  selectBatch(input?: { id?: string }): Promise<PhotoBatchState>;
+  onBatch(callback: (batch: PhotoBatchState) => void): () => void;
+  openMain(): Promise<void>;
+  hideTray(): Promise<void>;
+  onNavigate(callback: (page: string) => void): () => void;
   updateStatus(): Promise<UpdateStatus>;
   checkUpdate(): Promise<UpdateStatus>;
   installUpdate(): Promise<void>;

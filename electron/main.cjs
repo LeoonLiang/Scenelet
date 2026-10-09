@@ -24,14 +24,14 @@ if (!process.argv.includes('--smoke-test')) app.setPath('userData', path.join(ap
 const requestProgress = new Map();
 function progress(id, message) {
   if (message) requestProgress.set(id, message); else requestProgress.delete(id);
-  if (win && !win.isDestroyed()) win.webContents.send('framewall:progress', [...requestProgress.values()].at(-1) || '');
+  sendToWindows('framewall:progress', [...requestProgress.values()].at(-1) || '');
   if (change) { change.note = [...requestProgress.values()].at(-1) || ''; refreshChange(); }
 }
 function applyLanguage(pref = state.settings.language) {
   i18n.setLanguage(pref === 'zh' || pref === 'en' ? pref : i18n.resolve(app.getPreferredSystemLanguages()));
 }
 protocol.registerSchemesAsPrivileged([{ scheme: 'framewall', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
-let win, tray, timer, key = '', closing = false, applying = false, selecting = false;
+let win, trayWindow, trayMenu, tray, timer, key = '', closing = false, applying = false, selecting = false;
 // Wallpaper change in progress: { stage: 'select' | 'download' | 'apply', received, total, note, origin }.
 let change = null, flash = null, flashTimer, spinTimer, spinTick = 0, lastError = '', lastMenuKey = null, lastChangeText = '';
 let state = { photos: [], favorites: [], playlists: [], history: [], current: null, settings: { ...core.defaults } };
@@ -57,10 +57,14 @@ async function save() {
   return saveQueue;
 }
 function snapshot() {
-  return { ...state, downloadDirectory: downloadDirectory(), previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
+  return { ...state, wallpaperWidth: Number(wallpaperQuality()), downloadDirectory: downloadDirectory(), previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
+}
+function sendToWindows(channel, value) {
+  for (const window of [win, trayWindow]) if (window && !window.isDestroyed()) window.webContents.send(channel, value);
 }
 function publish(error) {
-  if (win && !win.isDestroyed()) win.webContents.send('framewall:update', { ...snapshot(), error });
+  void photoBatch.reconcile(state.settings)?.catch(() => {});
+  sendToWindows('framewall:update', { ...snapshot(), error });
   updateTray();
 }
 async function apiRequest(url, apiKey = key) {
@@ -98,6 +102,21 @@ async function query(input) {
   result.photos.forEach(p => known.set(p.id, p));
   return result;
 }
+async function resolveRandomSource(input) {
+  const source = core.normalizeOnlineSource(input);
+  if (source.kind !== 'topic') return source;
+  const cached = topicIds.get(source.value);
+  let id = cached && Date.now() - cached.savedAt < 3600000 ? cached.id : null;
+  if (!id) { const result = await apiRequest(`/topics/${encodeURIComponent(source.value)}`); id = result.data.id; topicIds.set(source.value, { id, savedAt: Date.now() }); }
+  return { ...source, value: id };
+}
+async function randomPhotos(input, recentIds) {
+  const source = await resolveRandomSource(input);
+  const result = await require('./photo-batch.cjs').fetchRandomBatch(source, input, apiRequest, recentIds);
+  result.photos.forEach(p => known.set(p.id, p));
+  return result;
+}
+const photoBatch = require('./photo-batch.cjs').createPhotoBatch({ randomPhotos, localPhotos: rotationPool, publish: value => sendToWindows('framewall:batch', value) });
 function getPhoto(id) {
   const p = known.get(id);
   if (!p) throw new Error(__("err.photoNotLoaded"));
@@ -232,10 +251,13 @@ async function trimCache() {
     await fs.unlink(file); total -= entry.size;
   }
 }
+function wallpaperQuality() {
+  return state.settings.quality === 'auto' ? rotationClock.screenQuality(screen.getAllDisplays()) : state.settings.quality;
+}
 async function photoFile(p) {
   if (p.source === 'local') { await fs.access(p.localPath); return p.localPath; }
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(p.id)) throw new Error(__("err.photoId"));
-  const quality = state.settings.quality === 'auto' ? rotationClock.screenQuality(screen.getAllDisplays()) : state.settings.quality;
+  const quality = wallpaperQuality();
   const file = path.join(cachePath, `${p.id}-${quality}.jpg`);
   try { await fs.access(file); return file; } catch {}
   // A wallpaper selection counts as a download; never download on gallery hover.
@@ -383,7 +405,7 @@ function notifyResult(result) {
 }
 function refreshChange() {
   const text = trayStatus.statusText(change);
-  if (text !== lastChangeText && win && !win.isDestroyed()) win.webContents.send('framewall:changing', text);
+  if (text !== lastChangeText) sendToWindows('framewall:changing', text);
   lastChangeText = text;
   updateTray({ force: false });
 }
@@ -398,13 +420,7 @@ async function pickAndApply(automatic) {
       const settings = { ...state.settings };
       const signature = JSON.stringify([settings.onlineSource, settings.orientation, settings.minWidth]);
       const stillCurrent = () => !!key && state.settings.rotationSource === 'online' && (!automatic || state.settings.rotation) && signature === JSON.stringify([state.settings.onlineSource, state.settings.orientation, state.settings.minWidth]);
-      let source = core.normalizeOnlineSource(settings.onlineSource);
-      if (source.kind === 'topic') {
-        const cached = topicIds.get(source.value);
-        let id = cached && Date.now() - cached.savedAt < 3600000 ? cached.id : null;
-        if (!id) { const result = await apiRequest(`/topics/${encodeURIComponent(source.value)}`); id = result.data.id; topicIds.set(source.value, { id, savedAt: Date.now() }); }
-        source = { ...source, value: id };
-      }
+      const source = await resolveRandomSource(settings.onlineSource);
       const result = await core.fetchRandomMatching(source, settings, apiRequest, state.current?.id, state.history.map(h => h.id));
       if (!stillCurrent()) throw Object.assign(new Error(__("err.selectCancelled")), { cancelled: true });
       known.set(result.photo.id, result.photo);
@@ -416,7 +432,7 @@ async function pickAndApply(automatic) {
       pool.push(p);
     }
     if (!pool.length) { await save(); publish(); }
-    return await apply(core.nextPhoto(pool, state.current?.id, state.settings.order).id);
+    return await apply(core.nextPhoto(pool, state.current?.id, automatic ? state.settings.order : 'shuffle').id);
   } finally { selecting = false; }
 }
 async function rotationTick() {
@@ -473,16 +489,43 @@ function trayIcon() {
 function syncTray() {
   if (!state.settings.showTrayIcon) {
     clearInterval(spinTimer);
+    trayWindow?.hide();
     tray?.destroy(); tray = null; lastMenuKey = null;
     return;
   }
   if (!tray) {
     tray = new Tray(trayIcon());
-    tray.on('double-click', () => void reveal());
+    tray.on('click', () => void toggleTrayWindow().catch(e => publish(e.message)));
+    tray.on('right-click', () => { trayWindow?.hide(); if (trayMenu) tray.popUpContextMenu(trayMenu); });
     lastMenuKey = null;
     if (change) startSpinner();
   }
   updateTray();
+}
+function handleMainClose(event) {
+  if (!closing && state.settings.minimizeToTray && (tray || process.platform === 'darwin')) { event.preventDefault(); win.hide(); }
+  else { closing = true; trayWindow?.destroy(); }
+}
+async function toggleTrayWindow() {
+  if (trayWindow && !trayWindow.isDestroyed() && trayWindow.isVisible()) { trayWindow.hide(); return; }
+  if (!trayWindow || trayWindow.isDestroyed()) {
+    trayWindow = new BrowserWindow({ width: 560, height: 570, show: false, frame: false, resizable: false, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true, backgroundColor: '#f6f5f1', title: 'Scenelet', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    trayWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    trayWindow.webContents.on('will-navigate', event => event.preventDefault());
+    trayWindow.on('blur', () => trayWindow?.hide());
+    trayWindow.on('close', event => { if (!closing) { event.preventDefault(); trayWindow.hide(); } });
+    if (dev) await trayWindow.loadURL('http://127.0.0.1:5173/#tray');
+    else await trayWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'tray' });
+  }
+  if (!tray || trayWindow.isDestroyed()) return;
+  const anchor = tray.getBounds();
+  const area = screen.getDisplayMatching(anchor).workArea;
+  const width = Math.min(560, area.width), height = Math.min(570, area.height);
+  const x = Math.round(Math.max(area.x, Math.min(anchor.x + anchor.width / 2 - width / 2, area.x + area.width - width)));
+  const below = anchor.y + anchor.height + 8;
+  const y = Math.round(Math.max(area.y, Math.min(below + height <= area.y + area.height ? below : anchor.y - height - 8, area.y + area.height - height)));
+  trayWindow.setBounds({ x, y, width, height });
+  trayWindow.show(); trayWindow.focus();
 }
 function updateTray({ force = true } = {}) {
   if (!tray) return;
@@ -497,7 +540,7 @@ function updateTray({ force = true } = {}) {
     : lastError ? __('tray.failedLine', { reason: trayStatus.truncate(trayStatus.firstLine(lastError), 26) })
     : lockScreenWarning ? __('tray.lockScreenWarning')
     : p ? (flash === 'ok' ? __('tray.applied', { title: trayStatus.truncate(p.title, 22) }) : __('tray.current', { title: trayStatus.truncate(p.title, 22) })) : '';
-  tray.setContextMenu(Menu.buildFromTemplate([
+  trayMenu = Menu.buildFromTemplate([
     ...(status ? [{ label: status, enabled: !!(lastError || lockScreenWarning) && !change, click: () => void reveal() }, { type: 'separator' }] : []),
     { label: __('tray.open'), click: () => void reveal() },
     { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
@@ -505,10 +548,13 @@ function updateTray({ force = true } = {}) {
     { label: __('tray.rotation'), type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
     { type: 'separator' },
     { label: __('tray.quit'), click: () => { closing = true; app.quit(); } },
-  ]));
+  ]);
+  // macOS opens an assigned context menu on left click, so present it explicitly on right click.
+  if (process.platform === 'linux') tray.setContextMenu(trayMenu);
 }
 // Bring the window back. Also ends a desktop preview, so the apps hidden by it return behind Scenelet.
 async function reveal() {
+  trayWindow?.hide();
   const ending = desktopPeek.restore(); // clears the preview flag before our own focus event can re-enter
   if (win.isMinimized()) win.restore(); win.show(); win.focus();
   if (await ending) { win.show(); win.focus(); }
@@ -530,6 +576,10 @@ function registerIPC() {
     'open-update': async () => shell.openExternal(updateCore.trustedReleaseUrl(updates.get().url)),
     feedback: async () => { await shell.openExternal(updateCore.issueUrl({ version: app.getVersion(), platform: process.platform, system: process.getSystemVersion(), arch: process.arch })); },
     bootstrap: () => snapshot(), query, connect,
+    batch: ({ refresh = false } = {}) => photoBatch.get(state.settings, refresh),
+    'select-batch': ({ id } = {}) => photoBatch.select(state.settings, id),
+    'open-main': async () => { await reveal(); win.webContents.send('framewall:navigate', 'home'); },
+    'hide-tray': () => trayWindow?.hide(),
     credential: () => key,
     disconnect: async () => { await fs.rm(path.join(app.getPath('userData'), 'credential.bin'), { force: true }); key = ''; topicIds.clear(); if (state.settings.rotationSource === 'online') { state.settings.rotation = false; await save(); schedule(); } publish(); return snapshot(); },
     import: importFiles,
@@ -573,7 +623,7 @@ function registerIPC() {
     'open-link': async ({ url }) => { const u = new URL(url); if (u.protocol !== 'https:' || !['unsplash.com', 'help.unsplash.com'].includes(u.hostname)) throw new Error(__("err.linkHost")); u.searchParams.set('utm_source', 'framewall'); u.searchParams.set('utm_medium', 'referral'); await shell.openExternal(u.toString()); },
   };
   for (const [name, handler] of Object.entries(handlers)) ipcMain.handle(`framewall:${name}`, async (event, input) => {
-    if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error(__("err.sender"));
+    if (![win, trayWindow].some(window => window && !window.isDestroyed() && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame)) throw new Error(__("err.sender"));
     try { return await handler(input); } catch (error) { throw new Error(diagnostics.redact(error.message || __('err.failed'), key)); }
   });
 }
@@ -626,10 +676,12 @@ else {
     try { if (safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(await fs.readFile(path.join(app.getPath('userData'), 'credential.bin'))); } catch {}
     protocol.handle('framewall', servePhoto);
     powerMonitor.on('resume', () => void rotationTick());
+    // Keep preview proportions current when displays are connected, rotated or resized.
+    for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(event, () => publish());
     win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: i18n.t('app.title'), icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
-    win.on('close', event => { if (!closing && state.settings.minimizeToTray && (tray || process.platform === 'darwin')) { event.preventDefault(); win.hide(); } });
+    win.on('close', handleMainClose);
     if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
     syncTray();
     // Returning to Scenelet any other way (Cmd-Tab, taskbar button) also ends a desktop preview.

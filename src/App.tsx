@@ -17,12 +17,16 @@ import ErrorPanel from './components/ErrorPanel';
 import Toast from './components/Toast';
 import PhotoImage from './components/PhotoImage';
 import LockScreenNotice from './components/LockScreenNotice';
+import PhotoBatch from './components/PhotoBatch';
+import { usePhotoBatch } from './hooks/usePhotoBatch';
 import HomePage from './pages/HomePage';
 import GalleryPage from './pages/GalleryPage';
 import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
   const api = window.framewall;
+  const isTray = window.location.hash === '#tray';
+  const [sourceExpanded, setSourceExpanded] = useState(false);
   const { t } = useI18n();
   const [state, setState] = useState<AppState>(initial);
   const [page, setPage] = useState<Page>('home');
@@ -55,6 +59,8 @@ export default function App() {
   const requestId = useRef(0);
   const report = (step: string, e: unknown) => { setFailure({ step, message: friendly(e), at: new Date().toLocaleTimeString() }); setSelected(null); window.scrollTo({ top: 0 }); };
 
+  const candidates = usePhotoBatch(api, state, initialized, e => report(t('batch.load'), e));
+
   useEffect(() => {
     function restore(s: AppState) {
       setState(s); setFilters(s.settings);
@@ -62,6 +68,7 @@ export default function App() {
       setFixed(!!s.current && !s.settings.rotation);
       if (s.settings.rotationSource === 'online' && (s.settings.onlineSource.value || s.settings.onlineSource.kind === 'discover')) setDraft(s.settings.onlineSource);
       else if (isLocalKind(s.settings.rotationSource) && s.photos.length) setDraft({ kind: s.settings.rotationSource, value: '', name: '' });
+      setSourceExpanded(!(read('framewall-source-configured', false) || (s.settings.rotationSource === 'online' ? s.settings.onlineSource.value || s.settings.onlineSource.kind === 'discover' : s.photos.length)));
       setInitialized(true);
     }
     if (api) {
@@ -75,6 +82,8 @@ export default function App() {
     const saved = read<Partial<AppState>>('framewall-preview', {});
     restore({ ...initial, ...saved, connected: false, settings: { ...initial.settings, ...saved.settings } });
   }, []);
+  useEffect(() => api?.onNavigate(() => { setPage('home'); setDraft(state.settings.rotationSource === 'online' ? state.settings.onlineSource : { kind: state.settings.rotationSource, value: '', name: '' }); setFilters(state.settings); setSourceExpanded(true); }), [api, state.settings]);
+  useEffect(() => { if (!isTray) return; const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') void api?.hideTray(); }; document.addEventListener('keydown', escape); return () => document.removeEventListener('keydown', escape); }, [isTray]);
   useEffect(() => { if (!api && initialized) localStorage.setItem('framewall-preview', JSON.stringify({ ...state, photos: state.photos.filter(p => !p.thumb.startsWith('blob:')) })); }, [state, initialized]);
   useEffect(() => { localStorage.setItem('framewall-sources', JSON.stringify(savedSources)); }, [savedSources]);
   useEffect(() => {
@@ -146,6 +155,20 @@ export default function App() {
     if (!api) { setState(s => ({ ...s, settings: { ...s.settings, ...patch } })); return; }
     await action(t('step.settings'), async () => { setState(await api.settings({ ...state.settings, ...patch })); });
   }
+  async function chooseSource() {
+    await action(t('batch.load'), async () => {
+      const normalized = normalizeSource(draft), online = !isLocalKind(draft.kind);
+      if (api && online && !state.connected) throw new Error(t('err.needKey'));
+      const interval = customInterval ? Number(customMinutes) : filters.interval;
+      if (!Number.isInteger(interval) || interval < 1 || interval > 10080) throw new Error(t('err.interval'));
+      const settings = { ...state.settings, orientation: filters.orientation, minWidth: filters.minWidth, interval, rotationSource: online ? 'online' : draft.kind, onlineSource: online ? normalized : state.settings.onlineSource, rotation: state.settings.rotation && !fixed };
+      if (api) setState(await api.settings(settings));
+      else setState(s => ({ ...s, settings }));
+      setDraft(normalized); setSourceExpanded(false);
+      localStorage.setItem('framewall-source-configured', 'true');
+      if (online) setSavedSources(old => [normalized, ...old.filter(x => x.kind !== normalized.kind || x.value !== normalized.value)].slice(0, 5));
+    });
+  }
   async function start(s = draft) {
     if (!desktop()) return;
     await action(t('step.start', { kind: kindLabel(s.kind) }), async () => {
@@ -156,6 +179,8 @@ export default function App() {
       const keep = fixed;
       const settings = { ...state.settings, orientation: filters.orientation, minWidth: filters.minWidth, interval, rotationSource: online ? 'online' : s.kind, onlineSource: online ? normalized : state.settings.onlineSource, order: 'shuffle', rotation: false };
       setState(await api!.settings(settings));
+      setSourceExpanded(false);
+      localStorage.setItem('framewall-source-configured', 'true');
       const applied = await api!.next(); setState(applied);
       if (!keep) setState(await api!.settings({ ...applied.settings, rotation: true }));
       setDraft(normalized);
@@ -223,17 +248,31 @@ export default function App() {
     setOff: (off: boolean) => { setFixed(off); if (off && state.settings.rotation) void changeSettings({ rotation: false }); } };
   const toHome = <button className="button secondary" onClick={() => setPage('home')}>{t('home.chooseSource')} <ArrowRight size={14}/></button>;
 
+  function editSource() {
+    if (isTray && api) { void api.openMain().catch(e => report(t('batch.changeSource'), e)); return; }
+    setDraft(state.settings.rotationSource === 'online' ? state.settings.onlineSource : { kind: state.settings.rotationSource, value: '', name: '' });
+    setFilters(state.settings); setSourceExpanded(true);
+  }
+  const batchPanel = <PhotoBatch batch={candidates.batch} loading={candidates.loading} busy={busy || !!changing} source={activeSource} favorites={state.favorites} compact={isTray} screen={primaryScreen} fit={state.settings.fit} platform={state.platform} wallpaperWidth={state.wallpaperWidth}
+    onSelect={id => void candidates.select(id)} onRefresh={() => void candidates.refresh()} onSource={editSource} onFavorite={p => void favorite(p)} onLink={link}
+    onApply={p => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: p.id }); setState(applied); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
+    onDownload={p => { if (desktop()) void action(t('step.download'), async () => { const result = await api!.download({ id: p.id }); if (!result.canceled) setNotice(t('notice.photoSaved')); }); }}/>;
+
   function content() {
     if (page === 'home') return <HomePage
       header={<PageHeader title={t('nav.home')} description={t('home.description')}/>}
       nowShowing={<>
-        {current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} busy={busy} onShare={() => sharePhoto(current)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/>}
+        {current && <details className="current-wallpaper-details"><summary>{t('now.label')} · {current.title}</summary><NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} busy={busy} onShare={() => sharePhoto(current)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/></details>}
         {recent.length > 0 && <details className="recent-history"><summary>{t('history.title')}</summary><div className="recent-photos">{recent.map(p => <div key={p.id} style={{ width: 140, flexShrink: 0 }}><div style={{ height: 90 }}><PhotoImage src={p.thumb} alt={p.title} eager={false} onOpen={() => openPhoto(p, recent)}/></div><span>{p.title}</span></div>)}</div></details>}
       </>}
-      connected={state.connected} keyPanel={keyPanel} onManageKey={() => setPage('settings')}
-      sourcePanel={<SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized}
+      connected={state.connected} keyPanel={sourceExpanded && !isLocalKind(draft.kind) ? keyPanel : null} onManageKey={() => setPage('settings')}
+      batchPanel={batchPanel}
+      sourcePanel={<>
+        <button className="source-summary" aria-expanded={sourceExpanded} aria-controls="home-source-settings" onClick={() => sourceExpanded ? setSourceExpanded(false) : editSource()}><span>{t('source.title')}<strong>{activeSource}</strong></span><span>{t(sourceExpanded ? 'batch.collapse' : 'batch.changeSource')} <ArrowRight size={14}/></span></button>
+        {sourceExpanded && <SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized} onCollapse={() => setSourceExpanded(false)}
         filters={<><FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>{primaryScreen && <button className="text-button screen-recommend" disabled={busy} onClick={() => setFilters(s => ({ ...s, orientation: primaryScreen.width / primaryScreen.height > 1.1 ? 'landscape' : primaryScreen.width / primaryScreen.height < .9 ? 'portrait' : 'squarish', minWidth: [3840, 2560, 1920].find(w => w <= primaryScreen.width) || 0 }))}>{t('screen.recommend')}</button>}</>}
-        fixed={fixed} onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
+        onBrowse={() => browse()} onStart={() => void chooseSource()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}
+      </>}/>;
     if (page === 'settings') return <SettingsPage screen={primaryScreen} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       downloadDirectory={state.downloadDirectory}
@@ -256,6 +295,13 @@ export default function App() {
       onOpen={p => openPhoto(p)} onFavorite={p => void favorite(p)} onLoadMore={() => void loadMore()}
       onGoHome={() => setPage('home')} onClearFilters={() => setFilters(s => ({ ...s, orientation: 'all', minWidth: 0 }))}/>;
   }
+
+  if (isTray) return <main className="tray-shell">
+    {batchPanel}
+    {changing && <div className="tray-status" role="status">{changing}</div>}
+    {failure && <ErrorPanel failure={failure} onClose={() => setFailure(null)} onCopy={() => copyFailure(failure)}/>}
+    {notice && <Toast message={notice} onClose={() => setNotice('')}/>}
+  </main>;
 
   return <div className="app-shell">
     <Sidebar page={page} setPage={setPage} favorites={state.favorites.length} connected={state.connected} desktop={!!api}/>

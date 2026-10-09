@@ -19,7 +19,7 @@ async function harness(t, failures = [2], lockGate) {
   const events = [], notifications = [], calls = [], activeTimers = new Set();
   let signalLockStarted;
   const lockStarted = new Promise(resolve => { signalLockStarted = resolve; });
-  let menu = [], tooltip = '';
+  let tooltip = '';
   class Notification {
     static isSupported() { return true; }
     constructor(options) { this.options = options; }
@@ -52,7 +52,7 @@ async function harness(t, failures = [2], lockGate) {
     setInterval(callback) { activeTimers.add(callback); return callback; },
     clearInterval(callback) { activeTimers.delete(callback); },
     testWindow: { isDestroyed: () => false, isVisible: () => false, isFocused: () => false, show() {}, focus() {}, webContents: { send: (...event) => events.push(event) } },
-    testTray: { setToolTip(value) { tooltip = value; }, setContextMenu(value) { menu = value; } },
+    testTray: { setToolTip(value) { tooltip = value; }, setContextMenu() {} },
   };
   const source = await fs.readFile(entry, 'utf8');
   vm.runInNewContext(source + `
@@ -67,13 +67,14 @@ async function harness(t, failures = [2], lockGate) {
       },
       manual: () => tracked('window', () => apply('local-a')),
       next, saveSettings, snapshot, rotationTick, previousWallpaper, removePhoto,
+      menu: () => trayMenu,
       expire() { state.nextRotationAt = Date.now() - 1000; },
       add(photo) { state.photos.push(photo); known.set(photo.id, photo); },
       applyPhoto: id => tracked('window', () => apply(id)),
     };`, context, { filename: entry });
   const api = context.module.exports;
   await api.initialize(dir, file);
-  return { ...api, dir, calls, events, notifications, activeTimers, lockStarted, getMenu: () => menu, getTooltip: () => tooltip };
+  return { ...api, dir, calls, events, notifications, activeTimers, lockStarted, getMenu: () => api.menu(), getTooltip: () => tooltip };
 }
 
 for (const origin of ['manual', 'tray', 'auto']) test(`${origin}: lock-screen failure still commits desktop/history and keeps rotation active`, async t => {
