@@ -28,12 +28,13 @@ export interface DesktopAPI {
   rescanLibrary(): Promise<AppState>;
   removePhoto(data: { id: string }): Promise<AppState>;
   relinkPhoto(data: { id: string }): Promise<AppState>;
-  restoreBackup(): Promise<AppState>;
   dismissRecovery(): Promise<AppState>;
   download(data: { id: string }): Promise<{ canceled: boolean }>;
   cache(): Promise<{ bytes: number; files: number }>;
   clearCache(): Promise<{ bytes: number; files: number }>;
   openLink(data: { url: string }): Promise<void>;
+  /** Opens a new GitHub issue in the browser. */
+  feedback(): Promise<void>;
   onUpdate(callback: (state: AppState) => void): () => void;
   onProgress(callback: (message: string) => void): () => void;
   /** Wallpaper change status (from the tray, auto rotation or the window); empty string when idle. */

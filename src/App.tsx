@@ -163,6 +163,7 @@ export default function App() {
     finally { if (id === requestId.current) setLoading(false); }
   }
   function link(url?: string) { if (!url) return; if (api) void action(t('step.link'), async () => { await api.openLink({ url }); }); else window.open(url, '_blank', 'noopener,noreferrer'); }
+  function feedback() { if (api) void action(t('feedback.title'), () => api.feedback()); else window.open('https://github.com/LeoonLiang/Scenelet/issues/new', '_blank', 'noopener,noreferrer'); }
   function copyFailure(f: Failure) { void navigator.clipboard.writeText(`${f.step}\n${f.message}`).then(() => setNotice(t('notice.copied'))).catch(() => setNotice(t('notice.copyFailed'))); }
 
   async function rescan() {
@@ -198,7 +199,7 @@ export default function App() {
       sourcePanel={<SourcePanel draft={draft} setDraft={setDraft} savedSources={savedSources} favorites={state.favorites.length} busy={busy} initialized={initialized}
         filters={<><FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>{primaryScreen && <button className="text-button screen-recommend" disabled={busy} onClick={() => setFilters(s => ({ ...s, orientation: primaryScreen.width / primaryScreen.height > 1.1 ? 'landscape' : primaryScreen.width / primaryScreen.height < .9 ? 'portrait' : 'squarish', minWidth: [3840, 2560, 1920].find(w => w <= primaryScreen.width) || 0 }))}>{t('screen.recommend')}</button>}</>}
         onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
-    if (page === 'settings') return <SettingsPage screen={primaryScreen} onRestoreBackup={() => { if (desktop()) void action(t('backup.restore'), async () => { const restored = await api!.restoreBackup(); setState(restored); setFilters(restored.settings); setCustomInterval(!intervals.includes(restored.settings.interval)); setCustomMinutes(String(restored.settings.interval)); }); }} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
+    if (page === 'settings') return <SettingsPage screen={primaryScreen} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       onChange={patch => void changeSettings(patch)} onLink={link}
       onClearCache={() => { if (desktop()) void action(t('step.clearCache'), async () => { setCache(await api!.clearCache()); setNotice(t('notice.cacheCleared')); }); }}/>;
@@ -226,7 +227,7 @@ export default function App() {
         {failure && <ErrorPanel failure={failure} onClose={() => setFailure(null)} onCopy={() => copyFailure(failure)}/>}
         <LockScreenNotice platform={state.platform} settings={state.settings} warning={state.lockScreenWarning} busy={busy || !!changing}
           onChange={patch => void changeSettings(patch)} onSettings={() => setPage('settings')}/>
-        {state.recovery && <div className="recovery-notice" role="status"><span>{t(state.recovery === 'restored' ? 'backup.restored' : state.recovery === 'backup' ? 'backup.recovered' : 'backup.unavailable')}</span><button className="text-button" onClick={() => { if (api) void action(t('backup.dismiss'), async () => setState(await api.dismissRecovery())); }}>{t('backup.dismiss')}</button></div>}
+        {state.recovery && <div className="recovery-notice" role="status"><span>{t(state.recovery === 'backup' ? 'backup.recovered' : 'backup.unavailable')}</span><button className="text-button" onClick={() => { if (api) void action(t('backup.dismiss'), async () => setState(await api.dismissRecovery())); }}>{t('backup.dismiss')}</button></div>}
         {content()}
       </div>
       <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}

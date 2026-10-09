@@ -8,7 +8,7 @@ import { languages, t, type MessageKey } from '../i18n';
 import { creditCss, creditText, styles as creditStyles } from '../lib/credit';
 
 type Props = {
-  screen?: { width: number; height: number }; onRestoreBackup: () => void;
+  screen?: { width: number; height: number }; onFeedback: () => void;
   settings: Settings; platform: string; busy: boolean; cache: { bytes: number; files: number };
   theme: Theme; setTheme: (t: Theme) => void;
   header: ReactNode; keyPanel: ReactNode;
@@ -18,7 +18,7 @@ type Props = {
 const toggles = [{ field: 'autostart', key: 'settings.autostart' }, { field: 'minimizeToTray', key: 'settings.minimizeToTray' }] as const;
 const themes: { id: Theme; key: MessageKey }[] = [{ id: 'system', key: 'settings.theme.system' }, { id: 'light', key: 'settings.theme.light' }, { id: 'dark', key: 'settings.theme.dark' }];
 
-export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onRestoreBackup }: Props) {
+export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onFeedback }: Props) {
   return <div className="settings-page">
     {header}
     <section className="panel">
@@ -77,9 +77,9 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
       </div>
       <p className="helper">{t(platform === 'darwin' ? 'settings.noteMac' : 'settings.note')}</p>
     </section>
-    <section className="panel"><header className="panel-head"><h2>{t('backup.restore')}</h2><p>{t('backup.help')}</p></header><button className="button secondary" disabled={busy} onClick={onRestoreBackup}>{t('backup.restore')}</button></section>
     {keyPanel}
     <UpdatePanel/>
+    <section className="panel"><header className="panel-head"><h2>{t('feedback.title')}</h2><p>{t('feedback.help')}</p></header><button className="button secondary" onClick={onFeedback}>{t('feedback.open')} <ExternalLink size={14}/></button></section>
     <details className="api-note">
       <summary>{t('settings.apiNote')}</summary>
       <p>{t('settings.apiNoteText')}</p>

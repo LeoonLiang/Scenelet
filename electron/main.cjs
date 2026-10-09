@@ -494,26 +494,13 @@ function registerIPC() {
     'install-update': () => updates.install(),
     'open-downloaded-update': () => updates.openDownloaded(),
     'open-update': async () => shell.openExternal(updateCore.trustedReleaseUrl(updates.get().url)),
+    feedback: async () => { await shell.openExternal(updateCore.issueUrl({ version: app.getVersion(), platform: process.platform, system: process.getSystemVersion(), arch: process.arch })); },
     bootstrap: () => snapshot(), query, connect,
     credential: () => key,
     disconnect: async () => { await fs.rm(path.join(app.getPath('userData'), 'credential.bin'), { force: true }); key = ''; topicIds.clear(); if (state.settings.rotationSource === 'online') { state.settings.rotation = false; await save(); schedule(); } publish(); return snapshot(); },
     import: importFiles,
     'rescan-library': rescanLibrary, 'remove-photo': removePhoto, 'relink-photo': relinkPhoto, previous: previousWallpaper,
     'dismiss-recovery': async () => { recovery = ''; return snapshot(); },
-    'restore-backup': async () => {
-      if (indexing || applying || selecting) throw new Error(__('err.busy'));
-      const answer = await dialog.showMessageBox(win, { type: 'warning', message: __('backup.confirm'), buttons: [__('backup.restore'), __('import.cancel')], defaultId: 1, cancelId: 1 });
-      if (answer.response !== 0) return snapshot();
-      if (indexing || applying || selecting) throw new Error(__('err.busy'));
-      await saveQueue;
-      const saved = libraryStore.parseLibrary(await fs.readFile(storePath + '.bak', 'utf8'));
-      await fs.copyFile(storePath, storePath + `.before-restore-${Date.now()}`);
-      const activeWallpaper = state.current;
-      state = { photos: [], favorites: [], playlists: [], history: [], ...saved, current: activeWallpaper, settings: core.restoreSettings(saved.settings) };
-      state.settings.rotation = false; state.nextRotationAt = null;
-      known.clear(); imported.clear(); previousQueue = null;
-      registerPhotos(); applyLanguage(); recovery = 'restored'; schedule(); await save(); publish(); return snapshot();
-    },
     favorite: async ({ id }) => { const p = getPhoto(id); remember(p); state.favorites = state.favorites.includes(id) ? state.favorites.filter(f => f !== id) : [...state.favorites, id]; await save(); publish(); return snapshot(); },
     playlist: async ({ action, id, name, photoId }) => {
       if (action === 'create') { if (!String(name || '').trim()) throw new Error(__("err.playlistName")); state.playlists.push({ id: require('node:crypto').randomUUID(), name: String(name).trim().slice(0, 60), photoIds: [] }); }

@@ -3,8 +3,6 @@ const messages = {
   zh: {
     'import.progress': '正在导入 {current}/{total} 张照片…',
     'history.empty': '没有可恢复的上一张壁纸',
-    'backup.confirm': '恢复上一次保存的图库和设置？当前数据会另存备份，自动轮换将暂停。',
-    'backup.restore': '恢复备份',
     'app.title': '拾景 · Scenelet',
     'app.tooltip': '拾景 Scenelet',
     'app.startFailed': '拾景启动失败',
@@ -141,8 +139,6 @@ const messages = {
   en: {
     'import.progress': 'Importing photo {current}/{total}…',
     'history.empty': 'No previous wallpaper is available',
-    'backup.confirm': 'Restore the previous library and settings? Current data will be backed up and rotation paused.',
-    'backup.restore': 'Restore backup',
     'app.title': 'Scenelet',
     'app.tooltip': 'Scenelet',
     'app.startFailed': 'Scenelet failed to start',

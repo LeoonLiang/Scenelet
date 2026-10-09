@@ -10,4 +10,9 @@ function assetName(tag, platform, arch, portable = false) {
   return `Scenelet-${v}-${platform === 'win32' ? 'windows' : 'macos'}-${arch}-${platform === 'win32' ? portable ? 'portable.zip' : 'setup.exe' : portable ? 'app.zip' : 'installer.dmg'}`;
 }
 function trustedReleaseUrl(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.hostname !== 'github.com' || !url.pathname.startsWith(`/${repository}/releases`) || !/^\/LeoonLiang\/Scenelet\/releases(?:\/latest|\/tag\/[^/]+|\/download\/[^/]+\/[^/]+)?$/.test(url.pathname)) throw new Error(t('update.untrusted')); return url.toString(); }
-module.exports = { repository, releasesUrl, channel, version, newer, assetName, trustedReleaseUrl };
+// New GitHub issue with the app and system versions filled in, so reports are easier to reproduce.
+function issueUrl({ version: appVersion, platform, system, arch }) {
+  const os = platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : platform;
+  return `https://github.com/${repository}/issues/new?body=${encodeURIComponent(`\n\n---\nScenelet ${appVersion} · ${os} ${system} · ${arch}`)}`;
+}
+module.exports = { repository, releasesUrl, channel, version, newer, assetName, trustedReleaseUrl, issueUrl };
