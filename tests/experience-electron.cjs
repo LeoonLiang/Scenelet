@@ -18,13 +18,16 @@ const fakeApp = new Proxy(electron.app, { get(target, key) {
   const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
 } });
 let dialogFile;
+let sharedClipboard = '';
+let sharedPhoto;
 const context = {
   require(name) {
-    if (name === 'electron') return { ...electron, app: fakeApp, dialog: { showMessageBox: async () => ({ response: 0 }), showOpenDialog: async () => ({ canceled: false, filePaths: [dialogFile] }) } };
+    if (name === 'electron') return { ...electron, app: fakeApp, clipboard: { writeText: value => { sharedClipboard = value; }, readText: () => sharedClipboard }, dialog: { showMessageBox: async () => ({ response: 0 }), showOpenDialog: async () => ({ canceled: false, filePaths: [dialogFile] }) } };
     if (name === './native-wallpaper.cjs') return { createWallpaperService: () => ({ setDesktop: async () => {}, apply: async (_file, _settings, commit) => { applied++; await commit(); return { lockScreen: 'disabled' }; } }) };
     return realRequire(name);
   },
-  process, console, Buffer, URL, Headers, Response, __dirname: path.dirname(entry), module: { exports: {} },
+  process, console, Buffer, URL, Headers, Response, AbortSignal,
+  fetch: async url => { assert.equal(String(url), 'https://api.unsplash.com/photos/Xy9-abc_DEf'); return new Response(JSON.stringify(sharedPhoto)); }, __dirname: path.dirname(entry), module: { exports: {} },
   setInterval, clearInterval, setTimeout, clearTimeout,
 };
 const timeout = setTimeout(() => { console.error('Experience test timed out'); electron.app.exit(1); }, 90000);
@@ -40,6 +43,7 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
         updates = { get: () => ({ mode: 'disabled', state: 'idle', currentVersion: 'test', version: '', percent: 0, message: '', url: '' }), refresh() {} };
         protocol.handle('framewall', servePhoto); registerIPC();
       },
+      seedShare(photo) { key = 'fixture-key'; known.set(photo.id, photo); },
       indexFiles, snapshot, saveSettings, rotationTick, previousWallpaper, removePhoto, relinkPhoto, rescanLibrary,
       apply: id => apply(id),
       expire() { state.nextRotationAt = Date.now() - 5000; },
@@ -100,7 +104,7 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
     throw new Error('UI condition timed out: ' + code);
   };
   await until(`!!document.querySelector('.sidebar')`);
-  await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('本地照片')).click()`);
+  await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('我的图库')).click()`);
   await until(`document.querySelectorAll('.photo-card').length > 0`);
   assert.ok(await run(`document.querySelectorAll('.photo-card').length < 60`), '1000 photos render only visible rows');
   await run(`window.scrollTo(0, document.body.scrollHeight / 2)`);
@@ -131,9 +135,53 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
   await until(`!!document.querySelector('.settings-page')`);
   await new Promise(resolve => setTimeout(resolve, 150));
   await fs.writeFile(path.join(output, 'settings.png'), (await win.webContents.capturePage()).toPNG());
+  // Share in one session, then import through the real renderer and IPC boundary.
+  const localThumb = api.snapshot().photos[0].thumb;
+  const shared = { id: 'Xy9-abc_DEf', source: 'unsplash', title: '雪山日出', author: 'Ann', width: 4000, height: 2500, thumb: localThumb, full: localThumb };
+  sharedPhoto = { id: shared.id, width: 4000, height: 2500, description: shared.title, urls: { small: localThumb, regular: localThumb, raw: localThumb }, links: { html: 'https://unsplash.com/photos/Xy9-abc_DEf' }, user: { name: 'Ann', username: 'ann', links: { html: 'https://unsplash.com/@ann' } } };
+  api.seedShare(shared);
+  await run(`window.framewall.share({ id: 'Xy9-abc_DEf' })`);
+  assert.ok(sharedClipboard.includes('https://unsplash.com/photos/Xy9-abc_DEf'));
+  await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('我的图库')).click()`);
+  await until(`!!document.querySelector('.photo-grid')`);
+  await run(`[...document.querySelectorAll('.page-header button')].find(b => b.textContent.includes('导入照片')).click()`);
+  await until(`!!document.querySelector('.import-dialog[open]')`);
+  assert.equal(await run(`document.querySelector('.import-dialog').contains(document.activeElement)`), true);
+  const fillLink = async value => run(`(() => { const field = document.querySelector('#wallpaper-link'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await fillLink('not a photo link');
+  await run(`document.querySelector('.import-dialog form').requestSubmit()`);
+  await until(`!!document.querySelector('.import-error')`);
+  assert.ok(!api.snapshot().photos.some(p => p.id === shared.id));
+  await fillLink(sharedClipboard);
+  await run(`document.querySelector('.import-dialog form').requestSubmit()`);
+  await until(`document.querySelector('.import-preview h3')?.textContent === '雪山日出'`);
+  assert.ok(!api.snapshot().photos.some(p => p.id === shared.id), 'preview is not persisted');
+  await until(`document.querySelector('.import-image img')?.naturalWidth > 0`);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await fs.writeFile(path.join(output, 'import.png'), (await win.webContents.capturePage()).toPNG());
+  await run(`document.querySelector('.import-preview button').click()`);
+  await until(`document.querySelector('.preview-info h2')?.textContent === '雪山日出'`);
+  assert.equal(api.snapshot().photos.find(p => p.id === shared.id).imported, true);
+  await run(`[...document.querySelectorAll('.preview-actions button')].find(b => b.textContent.includes('分享')).click()`);
+  await until(`!!document.querySelector('.toast')`);
+  assert.ok(sharedClipboard.includes('https://unsplash.com/photos/Xy9-abc_DEf'));
+  await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await until(`!document.querySelector('.preview-dialog')`);
+  await win.reload();
+  await until(`!!document.querySelector('.sidebar')`);
+  await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('我的图库')).click()`);
+  await until(`!!document.querySelector('.photo-grid')`);
+  assert.ok((JSON.parse(await fs.readFile(path.join(output, 'library.json'), 'utf8'))).photos.some(p => p.id === shared.id && p.imported));
+  await run(`[...document.querySelectorAll('.page-header button')].find(b => b.textContent.includes('导入照片')).click()`);
+  await until(`!!document.querySelector('.import-dialog[open]')`);
+  dialogFile = path.join(output, 'from-import-dialog.jpg'); await fs.copyFile(source, dialogFile);
+  await run(`document.querySelector('.import-local').click()`);
+  await until(`!document.querySelector('.import-dialog')`);
+  await until(`!document.querySelector('.retry-progress') && !document.querySelector('.page-actions button:disabled')`);
+  assert.ok(api.snapshot().photos.some(p => p.title === 'from-import-dialog.jpg'), 'local import completes through the unified dialog');
   assert.equal(errors.filter(message => !/Content Security Policy/.test(message)).length, 0, errors.join('\n'));
   api.stop(); win.destroy(); clearTimeout(timeout);
-  console.log('PASS: real image decoding, thumbnails, history, rotation, missing files, relink, removal, 1000-photo virtualization, keyboard navigation, crop preview, and image retry.');
+  console.log('PASS: real image decoding, thumbnails, history, rotation, missing files, relink, removal, 1000-photo virtualization, keyboard navigation, crop preview, image retry, share-link round trip, durable import, and local import.');
   console.log('Screenshots: ' + output);
   electron.app.exit(0);
 })().catch(error => { console.error(error); clearTimeout(timeout); electron.app.exit(1); });

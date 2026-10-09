@@ -1,4 +1,4 @@
-export type Photo = { missing?: boolean; id: string; source: 'local' | 'unsplash' | 'demo'; title: string; width: number; height: number; thumb: string; full: string; color?: string; author: string; username?: string; link?: string; authorUrl?: string; createdAt?: string };
+export type Photo = { imported?: boolean; missing?: boolean; id: string; source: 'local' | 'unsplash' | 'demo'; title: string; width: number; height: number; thumb: string; full: string; color?: string; author: string; username?: string; link?: string; authorUrl?: string; createdAt?: string };
 export type OnlineSource = { kind: string; value: string; name: string };
 export type UpdateStatus = { mode: 'automatic' | 'manual' | 'disabled'; state: 'idle' | 'checking' | 'current' | 'downloading' | 'available' | 'downloaded' | 'ready' | 'error'; currentVersion: string; version: string; percent: number; message: string; url: string; packageType?: 'dmg' | 'zip' };
 export type Settings = { language: 'system' | 'zh' | 'en'; interval: number; rotation: boolean; order: string; rotationSource: string; fit: string; creditStyle: string; syncLockScreen: boolean; lockScreenPrompt: boolean; autostart: boolean; minimizeToTray: boolean; quality: string; cacheLimit: number; orientation: string; minWidth: number; onlineSource: OnlineSource; settingsRevision?: number };
@@ -39,6 +39,8 @@ export interface DesktopAPI {
   showDesktop(): Promise<void>;
   /** Copies a share message (with the Unsplash link) for this photo to the clipboard. */
   share(data: { id: string }): Promise<void>;
+  /** Saves a previewed Unsplash photo to the library without applying it. */
+  importShared(data: { id: string }): Promise<AppState>;
   /** Loads the photo from a pasted share message; reads the clipboard when no text is given. */
   openShared(data: { text?: string }): Promise<Photo>;
   onUpdate(callback: (state: AppState) => void): () => void;

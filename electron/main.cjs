@@ -169,8 +169,8 @@ async function rescanLibrary() {
 async function removePhoto({ id }) {
   if (indexing || applying || selecting) throw new Error(__('err.busy'));
   const photo = getPhoto(id);
-  if (photo.source !== 'local') throw new Error(__('err.photoNotLoaded'));
-  state.ignoredPaths = [...new Set([...(state.ignoredPaths || []), photo.localPath])];
+  if (photo.source !== 'local' && !state.photos.some(p => p.id === id && p.imported)) throw new Error(__('err.photoNotLoaded'));
+  if (photo.source === 'local') state.ignoredPaths = [...new Set([...(state.ignoredPaths || []), photo.localPath])];
   state.photos = state.photos.filter(p => p.id !== id);
   state.favorites = state.favorites.filter(value => value !== id);
   state.playlists.forEach(list => { list.photoIds = list.photoIds.filter(value => value !== id); });
@@ -326,7 +326,7 @@ async function restyle() {
 function rotationPool(settings = state.settings) {
   const selected = settings.rotationSource;
   const ids = selected.startsWith('playlist:') ? state.playlists.find(p => p.id === selected.slice(9))?.photoIds || [] : state.favorites;
-  return (selected === 'library' ? state.photos.filter(p => p.source === 'local') : state.photos.filter(p => ids.includes(p.id))).filter(p => core.matchesPhoto(p, settings));
+  return (selected === 'library' ? state.photos.filter(p => p.source === 'local' || p.imported) : state.photos.filter(p => ids.includes(p.id))).filter(p => core.matchesPhoto(p, settings));
 }
 // Wraps a wallpaper change so the tray / menu bar and the window can show what is happening.
 async function tracked(origin, work) {
@@ -526,6 +526,15 @@ function registerIPC() {
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },
     'show-desktop': () => desktopPeek.show(),
     share: async ({ id }) => { clipboard.writeText(share.shareText(getPhoto(id))); },
+    'import-shared': async ({ id }) => {
+      const photo = getPhoto(id);
+      if (photo.source !== 'unsplash') throw new Error(__('err.shareLocal'));
+      const saved = { ...photo, imported: true };
+      known.set(id, saved);
+      const index = state.photos.findIndex(p => p.id === id);
+      if (index < 0) state.photos.push(saved); else state.photos[index] = saved;
+      await save(); publish(); return snapshot();
+    },
     // Reads a shared wallpaper link (from the paste event, or the clipboard) and loads that photo for the preview dialog.
     'open-shared': async ({ text } = {}) => {
       const id = share.parseShared(typeof text === 'string' ? text : clipboard.readText());

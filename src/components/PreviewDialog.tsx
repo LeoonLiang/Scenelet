@@ -70,9 +70,9 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
           {photo.source === 'unsplash' && <button className="button secondary" disabled={busy} title={t('preview.shareHint')} onClick={onShare}><Share2 size={15}/>{t('preview.share')}</button>}
         </div>
         <p className="helper">{t('preview.help')}</p>
-        {photo.source === 'local' && <div className="library-actions">
+        {(photo.source === 'local' || photo.imported) && <div className="library-actions">
           {photo.missing && <p role="status">{t('library.missing')}</p>}
-          {onRelink && <button className="button secondary" disabled={busy} onClick={onRelink}>{t('library.relink')}</button>}
+          {photo.source === 'local' && onRelink && <button className="button secondary" disabled={busy} onClick={onRelink}>{t('library.relink')}</button>}
           {onRemove && <button className="button secondary" disabled={busy} onClick={onRemove}>{t('library.remove')}</button>}
           <p className="helper">{t('library.removeHelp')}</p>
         </div>}

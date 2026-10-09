@@ -387,3 +387,23 @@ progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accen
 .screen-recommend { margin: 12px 0; }
 
 .preview-image { container-type: size; }
+
+.now-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.import-dialog { width: min(520px, calc(100vw - 40px)); max-height: calc(100dvh - 64px); overflow-y: auto; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0, 0, 0, .2); }
+.import-dialog::backdrop { background: rgba(0, 0, 0, .4); backdrop-filter: blur(5px); }
+.import-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.import-heading h2 { margin: 0 0 8px; font-size: 20px; }
+.import-heading p, .import-preview > p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.import-local { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 20px 0 24px; }
+.import-local:hover { background: var(--accent-soft); }
+.import-local strong, .import-local small { display: block; }
+.import-local small { color: var(--muted); margin-top: 5px; }
+.import-dialog .field > span { display: flex; align-items: center; gap: 8px; }
+.import-dialog textarea { width: 100%; resize: vertical; min-height: 88px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; line-height: 1.6; }
+.import-link-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.import-link-actions .text-button { display: inline-flex; align-items: center; gap: 6px; }
+.import-error { color: var(--danger-text); font-size: 13px; line-height: 1.6; }
+.import-preview { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 20px; }
+.import-image { height: 180px; overflow: hidden; border-radius: 8px; }
+.import-image img { object-fit: contain; }
+.import-preview h3 { font-size: 16px; margin: 14px 0 6px; }

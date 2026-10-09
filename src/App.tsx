@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ClipboardPaste, FolderOpen, LoaderCircle, Shuffle } from 'lucide-react';
+import { ArrowRight, FolderOpen, LoaderCircle, Shuffle } from 'lucide-react';
 import type { AppState, OnlineSource, Photo, Settings } from './types';
 import { demoPhotos, initial } from './data';
 import { friendly, intervals, isLocalKind, kindLabel, matches, normalizeSource, read, sourceName, type Failure, type Page, type Theme } from './lib/sources';
@@ -10,6 +10,7 @@ import KeyPanel from './components/KeyPanel';
 import FilterControls from './components/FilterControls';
 import SourcePanel from './components/SourcePanel';
 import NowShowing from './components/NowShowing';
+import ImportDialog from './components/ImportDialog';
 import PreviewDialog from './components/PreviewDialog';
 import WallpaperBar from './components/WallpaperBar';
 import ErrorPanel from './components/ErrorPanel';
@@ -45,6 +46,7 @@ export default function App() {
   const [keyInput, setKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [selection, setSelection] = useState<Photo[]>([]);
+  const [importText, setImportText] = useState<string | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [theme, setTheme] = useState<Theme>(() => read('framewall-theme', 'light'));
   const [cache, setCache] = useState({ bytes: 0, files: 0 });
@@ -104,10 +106,11 @@ export default function App() {
   // Pasting a shared wallpaper anywhere outside a text field opens it.
   useEffect(() => {
     const paste = (e: ClipboardEvent) => {
+      if (selected || importText !== null || busy) return;
       const target = e.target as HTMLElement | null;
       if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
       const text = e.clipboardData?.getData('text') || '';
-      if (/unsplash\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?photos\//.test(text)) { e.preventDefault(); void openShared(text); }
+      if (/unsplash\.com\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?photos\//.test(text)) { e.preventDefault(); setImportText(text); }
     };
     document.addEventListener('paste', paste);
     return () => document.removeEventListener('paste', paste);
@@ -170,7 +173,9 @@ export default function App() {
     if (api) await action(t('step.favorite'), async () => { setState(await api.favorite({ id: p.id })); });
     else setState(s => ({ ...s, favorites: s.favorites.includes(p.id) ? s.favorites.filter(id => id !== p.id) : [...s.favorites, p.id] }));
   }
-  async function importPhotos() {
+  function importPhotos() { setImportText(''); }
+  async function importLocalPhotos() {
+    setImportText(null);
     if (!api) { inputFile.current?.click(); return; }
     await action(t('step.import'), async () => { const imported = await api.import(); setState(imported); setDraft({ kind: 'library', value: '', name: '' }); setPage('library'); if (imported.importFailed) setNotice(t('notice.importSkipped', { count: imported.importFailed })); });
   }
@@ -190,9 +195,6 @@ export default function App() {
   }
   function link(url?: string) { if (!url) return; if (api) void action(t('step.link'), async () => { await api.openLink({ url }); }); else window.open(url, '_blank', 'noopener,noreferrer'); }
   function feedback() { if (api) void action(t('feedback.title'), () => api.feedback()); else window.open('https://github.com/LeoonLiang/Scenelet/issues/new', '_blank', 'noopener,noreferrer'); }
-  async function openShared(text?: string) {
-    if (desktop()) await action(t('home.paste'), async () => { const photo = await api!.openShared({ text }); openPhoto(photo, [photo]); });
-  }
   function sharePhoto(p: Photo) {
     if (desktop()) void action(t('preview.share'), async () => { await api!.share({ id: p.id }); setNotice(t('notice.shared')); });
   }
@@ -214,7 +216,7 @@ export default function App() {
   const current = state.photos.find(p => p.id === state.current?.id) || state.current?.photo;
   const activeSource = state.settings.rotationSource === 'online' ? state.settings.onlineSource.value || state.settings.onlineSource.kind === 'discover' ? sourceName(state.settings.onlineSource) : t('source.none') : isLocalKind(state.settings.rotationSource) ? kindLabel(state.settings.rotationSource) : t('source.legacy');
   const preview = page === 'browse' && !state.connected;
-  const photos = (page === 'browse' ? preview ? demoPhotos() : remote : page === 'favorites' ? state.photos.filter(p => state.favorites.includes(p.id)) : state.photos.filter(p => p.source === 'local')).filter(p => matches(p, filters));
+  const photos = (page === 'browse' ? preview ? demoPhotos() : remote : page === 'favorites' ? state.photos.filter(p => state.favorites.includes(p.id)) : state.photos.filter(p => p.source === 'local' || p.imported)).filter(p => matches(p, filters));
 
   const keyPanel = <KeyPanel connected={state.connected} desktop={!!api} busy={busy} keyInput={keyInput} setKeyInput={setKeyInput} showKey={showKey} setShowKey={setShowKey} onConnect={() => void connect()} onDisconnect={() => void disconnect()} onImport={() => void importPhotos()} onLink={link}/>;
   const intervalState = { custom: customInterval, setCustom: setCustomInterval, minutes: customMinutes, setMinutes: setCustomMinutes, off: fixed,
@@ -223,10 +225,9 @@ export default function App() {
 
   function content() {
     if (page === 'home') return <HomePage
-      header={<PageHeader title={t('nav.home')} description={t('home.description')}
-        actions={api && <button className="button secondary" disabled={busy} title={t('home.pasteHint')} onClick={() => void openShared()}><ClipboardPaste size={14}/>{t('home.paste')}</button>}/>}
+      header={<PageHeader title={t('nav.home')} description={t('home.description')}/>}
       nowShowing={<>
-        {current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/>}
+        {current && <NowShowing photo={current} source={activeSource} liked={state.favorites.includes(current.id)} busy={busy} onShare={() => sharePhoto(current)} onFavorite={() => void favorite(current)} onOpen={() => openPhoto(current, recent)}/>}
         {recent.length > 0 && <details className="recent-history"><summary>{t('history.title')}</summary><div className="recent-photos">{recent.map(p => <div key={p.id} style={{ width: 140, flexShrink: 0 }}><div style={{ height: 90 }}><PhotoImage src={p.thumb} alt={p.title} eager={false} onOpen={() => openPhoto(p, recent)}/></div><span>{p.title}</span></div>)}</div></details>}
       </>}
       connected={state.connected} keyPanel={keyPanel} onManageKey={() => setPage('settings')}
@@ -270,6 +271,15 @@ export default function App() {
         onPeek={() => { if (desktop()) void api!.showDesktop().catch(e => report(t('bar.peek'), e)); }}/>
     </main>
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
+    {importText !== null && <ImportDialog initialText={importText} api={api}
+      onClose={() => setImportText(null)} onLocal={() => void importLocalPhotos()}
+      onImport={async photo => {
+        if (!api) throw new Error(t('err.browserOnly'));
+        const imported = await api.importShared({ id: photo.id });
+        setState(imported); setFilters(s => ({ ...s, orientation: 'all', minWidth: 0 }));
+        setDraft({ kind: 'library', value: '', name: '' }); setPage('library');
+        setImportText(null); const saved = imported.photos.find(p => p.id === photo.id) || photo; openPhoto(saved, [saved]); setNotice(t('notice.linkImported'));
+      }}/>}
     {selected && <PreviewDialog screen={primaryScreen} fit={state.settings.fit} credit={state.settings.creditStyle === 'none' ? undefined : state.settings.creditStyle}
       onPrevious={selectedIndex > 0 ? () => setSelected(selection[selectedIndex - 1]) : undefined}
       onNext={selectedIndex >= 0 && selectedIndex < selection.length - 1 ? () => setSelected(selection[selectedIndex + 1]) : undefined}

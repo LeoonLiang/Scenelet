@@ -22,6 +22,14 @@ npm start
 
 `npm run dev` 同时运行 Vite 和 Electron；`npm run dev:web` 仅运行浏览器预览。PowerShell 如遇脚本执行策略限制，使用 `npm.cmd`。
 
+### macOS 开发窗口没有菜单栏图标
+
+先区分桌面开发（`npm run dev`）和浏览器预览（`npm run dev:web`）：只有桌面版创建系统菜单栏图标。
+
+在 macOS 26 上，终端启动的开发进程可能被 Control Center 归到启动它的宿主应用名下。例如从 VS Code 集成终端运行时，应检查「系统设置 → 菜单栏」中的 Visual Studio Code / Code；从其他终端或工具启动时，检查相应宿主应用。设置中不一定出现 Electron。安装版由系统直接启动，因此可能正常显示，而开发版被宿主应用的设置隐藏。
+
+诊断时，`Tray.getBounds()` 的非零尺寸不能单独证明图标可见：测试中被隐藏的项目也曾返回正常位置。应结合 Control Center 日志里的 `Moving host to blocked list` 和 `Adding menu item ... to tracked application ...` 判断。不要通过反复修改图标、Bundle ID 或重置系统菜单栏设置处理这个现象。
+
 Windows 便携包：
 
 ```sh
