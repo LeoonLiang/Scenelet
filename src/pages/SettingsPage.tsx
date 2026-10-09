@@ -10,6 +10,7 @@ import { creditCss, creditText, styles as creditStyles } from '../lib/credit';
 type Props = {
   screen?: { width: number; height: number }; onFeedback: () => void;
   settings: Settings; platform: string; busy: boolean; cache: { bytes: number; files: number };
+  downloadDirectory?: string; onChooseDownloadDirectory: () => void;
   theme: Theme; setTheme: (t: Theme) => void;
   header: ReactNode; keyPanel: ReactNode;
   onChange: (patch: Partial<Settings>) => void; onClearCache: () => void; onLink: (url: string) => void;
@@ -18,7 +19,7 @@ type Props = {
 const toggles = [{ field: 'autostart', key: 'settings.autostart' }, { field: 'minimizeToTray', key: 'settings.minimizeToTray' }] as const;
 const themes: { id: Theme; key: MessageKey }[] = [{ id: 'system', key: 'settings.theme.system' }, { id: 'light', key: 'settings.theme.light' }, { id: 'dark', key: 'settings.theme.dark' }];
 
-export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onFeedback }: Props) {
+export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onFeedback, downloadDirectory, onChooseDownloadDirectory }: Props) {
   return <div className="settings-page">
     {header}
     <section className="panel">
@@ -36,6 +37,10 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
       </div>
       {screen && <p className="helper">{t('screen.hint', screen)}</p>}
       <div className="rows">
+        <div className="row download-directory-row">
+          <div><strong>{t('settings.downloadDirectory')}</strong><small className="download-directory" title={downloadDirectory}>{downloadDirectory || t('settings.downloadDirectoryDesktop')}</small></div>
+          <button className="button secondary" disabled={busy || platform === 'web'} onClick={onChooseDownloadDirectory}>{t('settings.changeDownloadDirectory')}</button>
+        </div>
         {platform === 'win32' && <div className="row">
           <div><strong>{t('settings.syncLockScreen')}</strong><small id="lock-screen-description">{t('settings.syncLockScreenDesc')}</small></div>
           <button className={`toggle${settings.syncLockScreen ? ' on' : ''}`} role="switch" aria-label={t('settings.syncLockScreen')} aria-describedby="lock-screen-description" aria-checked={settings.syncLockScreen} disabled={busy}
@@ -66,6 +71,11 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
               <button key={item.id} role="radio" lang={item.id === 'system' ? undefined : item.id} aria-checked={settings.language === item.id} className={settings.language === item.id ? 'selected' : ''} disabled={busy} onClick={() => onChange({ language: item.id })}>{item.label}</button>)}
           </div>
         </div>
+        {platform !== 'web' && <div className="row">
+          <div><strong>{t(platform === 'darwin' ? 'settings.showMenuBarIcon' : 'settings.showTrayIcon')}</strong><small id="tray-icon-description">{t(platform === 'darwin' ? 'settings.showMenuBarIconDesc' : 'settings.showTrayIconDesc')}</small></div>
+          <button className={`toggle${settings.showTrayIcon ? ' on' : ''}`} role="switch" aria-label={t(platform === 'darwin' ? 'settings.showMenuBarIcon' : 'settings.showTrayIcon')} aria-describedby="tray-icon-description" aria-checked={settings.showTrayIcon} disabled={busy}
+            onClick={() => onChange({ showTrayIcon: !settings.showTrayIcon })}><span/></button>
+        </div>}
         {toggles.map(({ field, key }) => <div className="row" key={field}>
           <strong>{t(key)}</strong>
           <button className={`toggle${settings[field] ? ' on' : ''}`} role="switch" aria-label={t(key)} aria-checked={!!settings[field]} disabled={busy} onClick={() => onChange({ [field]: !settings[field] })}><span/></button>

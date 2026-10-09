@@ -236,6 +236,8 @@ export default function App() {
         fixed={fixed} onBrowse={() => browse()} onStart={() => void start()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}/>;
     if (page === 'settings') return <SettingsPage screen={primaryScreen} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
+      downloadDirectory={state.downloadDirectory}
+      onChooseDownloadDirectory={() => { if (desktop()) void action(t('settings.changeDownloadDirectory'), async () => { setState(await api!.chooseDownloadDirectory()); }); }}
       onChange={patch => void changeSettings(patch)} onLink={link}
       onClearCache={() => { if (desktop()) void action(t('step.clearCache'), async () => { setCache(await api!.clearCache()); setNotice(t('notice.cacheCleared')); }); }}/>;
     const gallery = page;

@@ -57,7 +57,7 @@ async function save() {
   return saveQueue;
 }
 function snapshot() {
-  return { ...state, previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
+  return { ...state, downloadDirectory: downloadDirectory(), previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
 }
 function publish(error) {
   if (win && !win.isDestroyed()) win.webContents.send('framewall:update', { ...snapshot(), error });
@@ -356,7 +356,7 @@ function setStage(stage, patch = {}) {
 }
 function startSpinner() {
   clearInterval(spinTimer);
-  if (process.platform !== 'darwin') return;
+  if (process.platform !== 'darwin' || !tray) return;
   spinTimer = setInterval(() => { spinTick++; if (tray && change) tray.setTitle(trayStatus.menuBarTitle(change, spinTick), { fontType: 'monospacedDigit' }); }, 100);
 }
 function finishChange(result, origin) {
@@ -452,7 +452,10 @@ async function saveSettings(input) {
   if (!settings.syncLockScreen) { lockScreenWarning = ''; lockScreenWarningNotified = false; }
   const reset = rotationClock.rotationKey(state.settings) !== rotationClock.rotationKey(settings);
   const restyled = settings.creditStyle !== state.settings.creditStyle;
-  state.settings = settings; schedule(reset); await save(); publish(warning);
+  const trayChanged = settings.showTrayIcon !== state.settings.showTrayIcon;
+  state.settings = settings;
+  if (trayChanged) syncTray();
+  schedule(reset); await save(); publish(warning);
   // A new credit style shows up on the current wallpaper right away (or right after a running change).
   // Failures are reported like a failed change; the setting itself stays saved.
   if (restyled) await restyle();
@@ -466,6 +469,20 @@ function trayIcon() {
   for (const [scaleFactor, suffix] of [[1, ''], [2, '@2x']]) image.addRepresentation({ scaleFactor, buffer: require('node:fs').readFileSync(path.join(__dirname, 'assets', `${name}${suffix}.png`)) });
   if (process.platform === 'darwin') image.setTemplateImage(true);
   return image;
+}
+function syncTray() {
+  if (!state.settings.showTrayIcon) {
+    clearInterval(spinTimer);
+    tray?.destroy(); tray = null; lastMenuKey = null;
+    return;
+  }
+  if (!tray) {
+    tray = new Tray(trayIcon());
+    tray.on('double-click', () => void reveal());
+    lastMenuKey = null;
+    if (change) startSpinner();
+  }
+  updateTray();
 }
 function updateTray({ force = true } = {}) {
   if (!tray) return;
@@ -496,6 +513,14 @@ async function reveal() {
   if (win.isMinimized()) win.restore(); win.show(); win.focus();
   if (await ending) { win.show(); win.focus(); }
 }
+function downloadDirectory() {
+  return state.settings.downloadDirectory || app.getPath('downloads');
+}
+async function chooseDownloadDirectory() {
+  const result = await dialog.showOpenDialog(win, { defaultPath: downloadDirectory(), properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || !result.filePaths.length) return snapshot();
+  return saveSettings({ ...state.settings, downloadDirectory: result.filePaths[0] });
+}
 function registerIPC() {
   const handlers = {
     'update-status': () => updates.get(),
@@ -520,8 +545,9 @@ function registerIPC() {
       await save(); publish(); return snapshot();
     },
     settings: saveSettings,
+    'choose-download-directory': chooseDownloadDirectory,
     wallpaper: ({ id }) => tracked('window', () => apply(id)), next: () => next(),
-    download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`, filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
+    download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: path.join(downloadDirectory(), `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`), filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },
     'show-desktop': () => desktopPeek.show(),
@@ -603,10 +629,9 @@ else {
     win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: i18n.t('app.title'), icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
-    win.on('close', event => { if (!closing && state.settings.minimizeToTray) { event.preventDefault(); win.hide(); } });
+    win.on('close', event => { if (!closing && state.settings.minimizeToTray && (tray || process.platform === 'darwin')) { event.preventDefault(); win.hide(); } });
     if (process.platform === 'darwin' && dev) app.dock?.setIcon(path.join(__dirname, 'assets', 'dock.png'));
-    tray = new Tray(trayIcon());
-    tray.on('double-click', () => void reveal());
+    syncTray();
     // Returning to Scenelet any other way (Cmd-Tab, taskbar button) also ends a desktop preview.
     win.on('focus', () => { if (desktopPeek.active) void reveal(); });
     updates = require('./updater.cjs')({ app, shell, disabled: smoke || dev, notify: value => { if (!win.isDestroyed()) win.webContents.send('framewall:updater', value); }, beforeInstall: async () => { if (applying || selecting) throw new Error(__("err.installBusy")); await saveQueue; closing = true; clearInterval(timer); } });

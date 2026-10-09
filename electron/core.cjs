@@ -3,7 +3,7 @@ const path = require('node:path');
 const { t } = require('./i18n.cjs');
 const creditStyles = require('./credit-styles.json');
 
-const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', creditStyle: creditStyles.default, syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
+const defaults = { language: 'system', interval: 60, rotation: false, order: 'shuffle', rotationSource: 'favorites', fit: 'fill', creditStyle: creditStyles.default, syncLockScreen: true, lockScreenPrompt: false, autostart: false, minimizeToTray: true, showTrayIcon: true, downloadDirectory: '', quality: 'auto', cacheLimit: 1024, orientation: 'landscape', minWidth: 0, onlineSource: { kind: 'author', value: '', name: '' } };
 const settingsRevision = 1;
 function normalizeSettings(input = {}) {
   return {
@@ -20,6 +20,8 @@ function normalizeSettings(input = {}) {
     lockScreenPrompt: input.lockScreenPrompt === true && input.syncLockScreen !== true,
     autostart: input.autostart === true,
     minimizeToTray: input.minimizeToTray !== false,
+    showTrayIcon: input.showTrayIcon !== false,
+    downloadDirectory: typeof input.downloadDirectory === 'string' && !input.downloadDirectory.includes('\0') && path.isAbsolute(input.downloadDirectory) ? input.downloadDirectory : '',
     quality: ['auto', '1920', '2560', '3840'].includes(input.quality) ? input.quality : defaults.quality,
     cacheLimit: [256, 512, 1024, 2048].includes(Number(input.cacheLimit)) ? Number(input.cacheLimit) : 1024,
     orientation: ['all', 'landscape', 'portrait', 'squarish'].includes(input.orientation) ? input.orientation : 'landscape',

@@ -53,7 +53,7 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
         for (let i = 0; i < count; i++) state.photos.push({ ...original, id: 'virtual-' + i, title: 'Photo ' + i });
         publish();
       },
-      stop() { clearInterval(timer); }
+      stop() { clearInterval(timer); tray?.destroy(); }
     };`, context, { filename: entry });
   const api = context.module.exports;
   await fs.mkdir(output, { recursive: true });
@@ -133,6 +133,19 @@ const timeout = setTimeout(() => { console.error('Experience test timed out'); e
   await until(`!document.querySelector('.photo-card .image-message') && document.querySelector('.photo-card img')?.naturalWidth > 0`);
   await run(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('偏好设置')).click()`);
   await until(`!!document.querySelector('.settings-page')`);
+  await until(`document.querySelector('.download-directory')?.textContent === ${JSON.stringify(electron.app.getPath('downloads'))}`);
+  dialogFile = path.join(output, '下载照片'); await fs.mkdir(dialogFile);
+  await run(`[...document.querySelectorAll('.settings-page button')].find(b => b.textContent === '更改位置').click()`);
+  await until(`document.querySelector('.download-directory')?.textContent === ${JSON.stringify(dialogFile)}`);
+  assert.equal(api.snapshot().settings.downloadDirectory, dialogFile);
+  const trayLabel = process.platform === 'darwin' ? '显示顶部菜单栏图标' : '显示系统托盘图标';
+  const traySwitch = `document.querySelector('[role="switch"][aria-label="${trayLabel}"]')`;
+  await run(`${traySwitch}.click()`);
+  await until(`${traySwitch}.getAttribute('aria-checked') === 'false' && !${traySwitch}.disabled`);
+  assert.equal(api.snapshot().settings.showTrayIcon, false);
+  await run(`${traySwitch}.click()`);
+  await until(`${traySwitch}.getAttribute('aria-checked') === 'true' && !${traySwitch}.disabled`);
+  assert.equal(api.snapshot().settings.showTrayIcon, true);
   await new Promise(resolve => setTimeout(resolve, 150));
   await fs.writeFile(path.join(output, 'settings.png'), (await win.webContents.capturePage()).toPNG());
   // Share in one session, then import through the real renderer and IPC boundary.
