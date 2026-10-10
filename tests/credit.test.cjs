@@ -19,14 +19,14 @@ test('jpegSize reads baseline and progressive frame headers after metadata', () 
 });
 
 test('jpegSize matches a real encoder', async () => {
-  const bytes = await fs.readFile(path.join(__dirname, '..', 'docs', 'images', 'preview.jpg'));
+  const bytes = await fs.readFile(path.join(__dirname, 'fixtures', 'credit-source.jpg'));
   assert.deepEqual(jpegSize(bytes), { width: 1265, height: 712 });
 });
 
 test('createCredited renders once, then reuses the copy without opening a window', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'credit-'));
   const file = path.join(directory, 'abc-3840.jpg');
-  await fs.copyFile(path.join(__dirname, '..', 'docs', 'images', 'preview.jpg'), file);
+  await fs.copyFile(path.join(__dirname, 'fixtures', 'credit-source.jpg'), file);
   const jobs = [];
   class FakeWindow {
     constructor() { this.webContents = { setWindowOpenHandler() {}, executeJavaScript: async code => { jobs.push(code); return Buffer.from('credited').toString('base64'); } }; }
@@ -53,7 +53,7 @@ test('createCredited renders once, then reuses the copy without opening a window
 test('createCredited surfaces renderer failures and leaves no partial file', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'credit-'));
   const file = path.join(directory, 'abc-1920.jpg');
-  await fs.copyFile(path.join(__dirname, '..', 'docs', 'images', 'preview.jpg'), file);
+  await fs.copyFile(path.join(__dirname, 'fixtures', 'credit-source.jpg'), file);
   let destroyed = false;
   class BrokenWindow {
     constructor() { this.webContents = { setWindowOpenHandler() {}, executeJavaScript: async () => { throw new Error('Unexpected image size'); } }; }

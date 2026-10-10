@@ -83,7 +83,7 @@ Windows 锁屏 API 的视觉结果与上述完整安装包矩阵仍需实机验�
 
 ## 截图与文档
 
-README 的截图保存在 `docs/images/`，属于正式文档资源；使用相对路径，使仓库页面也能显示。临时调试截图保存在被忽略的 `artifacts/`。
+README 的截图保存在 `docs/images/`，属于正式文档资源；使用相对路径，使仓库页面也能显示。截图步骤、演示数据说明及站点图片同步规则见 [截图维护说明](images/README.md)。临时调试截图保存在被忽略的 `artifacts/`。
 
 公开下载统一使用 [GitHub Releases](https://github.com/LeoonLiang/Scenelet/releases)。介绍页在 site/，独立 gh-pages 分支启用方法见 [发布文档](releases.md)。
 
