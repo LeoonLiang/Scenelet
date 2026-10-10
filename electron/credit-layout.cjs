@@ -7,7 +7,7 @@ const creditStyles = require('./credit-styles.json');
 const VERSION = 2;
 const FONT_RATIO = 0.0125; // text height relative to the primary screen height
 const MARGIN_RATIO = 0.022; // gap to the visible edge relative to the primary screen height
-const WINDOWS_TASKBAR_DIP = 48; // reserve a standard taskbar even when workArea omits it
+const WINDOWS_TASKBAR_DIP = 72; // leave extra clearance even when workArea reports only 48 DIP
 
 // Electron display -> physical pixel size plus the space taken by the menu bar, Dock or taskbar.
 function physical(display, platform = process.platform) {
@@ -19,8 +19,8 @@ function physical(display, platform = process.platform) {
     insets: {
       top: Math.max(0, area.y - bounds.y) * scale,
       left: Math.max(0, area.x - bounds.x) * scale,
-      // Auto-hidden taskbars can reserve only a thin strip (or nothing). The credit is
-      // baked into the image, so it must also clear the taskbar when it is revealed.
+      // workArea can omit an auto-hidden taskbar or report less than its expanded height.
+      // The baked-in credit needs a conservative safe area even while the bar is hidden.
       bottom: Math.max(platform === 'win32' ? WINDOWS_TASKBAR_DIP : 0, bounds.y + bounds.height - (area.y + area.height)) * scale,
       right: Math.max(0, bounds.x + bounds.width - (area.x + area.width)) * scale,
     },
