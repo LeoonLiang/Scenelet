@@ -10,6 +10,37 @@ const mac = { primary: true, scaleFactor: 2, bounds: { x: 0, y: 0, width: 1920, 
 const windows = { primary: true, scaleFactor: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1032 } };
 const screen = (width, height, insets = {}) => ({ width, height, insets: { top: 0, left: 0, bottom: 0, right: 0, ...insets } });
 
+test('Windows: credit clears a revealed taskbar even when the work area reserves almost nothing', () => {
+  for (const scaleFactor of [1, 1.5, 2]) {
+    for (const reserved of [0, 2]) {
+      const display = { ...windows, scaleFactor, workArea: { ...windows.bounds, height: 1080 - reserved } };
+      const image = { width: 1920 * scaleFactor, height: 1080 * scaleFactor };
+      for (const fit of ['fill', 'fit', 'stretch', 'center']) {
+        const layout = creditLayout(image, [display], fit, 'win32');
+        assert.ok(layout.bottom < 1032 * scaleFactor, `${fit} at ${scaleFactor}x: ${layout.bottom} overlaps the taskbar`);
+        assert.ok(layout.bottom > 990 * scaleFactor, 'credit should stay near the taskbar');
+      }
+    }
+  }
+});
+
+test('Windows: missing work area still leaves room for the taskbar', () => {
+  const layout = creditLayout({ width: 1920, height: 1080 }, [{ ...windows, workArea: undefined }], 'fill', 'win32');
+  assert.ok(layout.bottom < 1032);
+});
+
+test('Windows: a taller taskbar takes precedence over the minimum clearance', () => {
+  const display = { ...windows, scaleFactor: 1.5, workArea: { ...windows.bounds, height: 1000 } };
+  const layout = creditLayout({ width: 2880, height: 1620 }, [display], 'fill', 'win32');
+  assert.ok(layout.bottom < 1500 && layout.bottom > 1440);
+});
+
+test('macOS: a hidden Dock does not acquire Windows taskbar clearance', () => {
+  const display = { ...mac, workArea: { ...mac.bounds } };
+  const layout = creditLayout({ width: 3840, height: 2160 }, [display], 'fill', 'darwin');
+  assert.ok(layout.bottom > 2100 && layout.bottom < 2160);
+});
+
 test('fill: credit sits inside the cropped area, above the Dock', () => {
   // 3:2 photo on a 16:9 screen: top and bottom are cropped away by "fill".
   const layout = creditLayout({ width: 6000, height: 4000 }, [mac], 'fill');

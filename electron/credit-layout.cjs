@@ -7,9 +7,10 @@ const creditStyles = require('./credit-styles.json');
 const VERSION = 2;
 const FONT_RATIO = 0.0125; // text height relative to the primary screen height
 const MARGIN_RATIO = 0.022; // gap to the visible edge relative to the primary screen height
+const WINDOWS_TASKBAR_DIP = 48; // reserve a standard taskbar even when workArea omits it
 
 // Electron display -> physical pixel size plus the space taken by the menu bar, Dock or taskbar.
-function physical(display) {
+function physical(display, platform = process.platform) {
   const scale = display.scaleFactor || 1;
   const bounds = display.bounds || { x: 0, y: 0, ...display.size };
   const area = display.workArea || bounds;
@@ -18,7 +19,9 @@ function physical(display) {
     insets: {
       top: Math.max(0, area.y - bounds.y) * scale,
       left: Math.max(0, area.x - bounds.x) * scale,
-      bottom: Math.max(0, bounds.y + bounds.height - (area.y + area.height)) * scale,
+      // Auto-hidden taskbars can reserve only a thin strip (or nothing). The credit is
+      // baked into the image, so it must also clear the taskbar when it is revealed.
+      bottom: Math.max(platform === 'win32' ? WINDOWS_TASKBAR_DIP : 0, bounds.y + bounds.height - (area.y + area.height)) * scale,
       right: Math.max(0, bounds.x + bounds.width - (area.x + area.width)) * scale,
     },
   };
@@ -60,11 +63,12 @@ function outputSize(fit, image, screens) {
  * @param {{ width: number, height: number }} image original pixel size
  * @param {object[]} displays Electron Display objects (screen.getAllDisplays()) with `primary` set
  * @param {string} fit 'fill' | 'fit' | 'stretch' | 'center'
+ * @param {string} platform operating system, used for minimum taskbar clearance
  * @returns {{ width, height, right, bottom, fontSize }} output size and the bottom-right text anchor
  */
-function creditLayout(image, displays, fit = 'fill') {
-  const screens = (displays || []).map(physical).filter(s => s.width > 0 && s.height > 0);
-  if (!screens.length) screens.push({ width: 1920, height: 1080, primary: true, insets: { top: 0, left: 0, bottom: 0, right: 0 } });
+function creditLayout(image, displays, fit = 'fill', platform = process.platform) {
+  const screens = (displays || []).map(display => physical(display, platform)).filter(s => s.width > 0 && s.height > 0);
+  if (!screens.length) screens.push(physical({ size: { width: 1920, height: 1080 }, primary: true }, platform));
   const size = outputSize(fit, image, screens);
   // The corner must be visible on every screen, so intersect the safe areas.
   const rects = screens.map(screen => ({ screen, rect: safeRect(fit, size, screen) }));
