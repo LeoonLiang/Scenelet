@@ -47,6 +47,8 @@ const imported = new Map();
 const topicIds = new Map();
 const dev = process.argv.includes('--dev');
 const smoke = process.argv.includes('--smoke-test');
+const AUTOSTART_ARG = '--autostart';
+let backgroundStartup = false, startupReady = false;
 if (smoke) app.setPath('userData', path.join(process.cwd(), '.smoke-data'));
 let saveQueue = Promise.resolve();
 async function save() {
@@ -462,7 +464,7 @@ async function saveSettings(input) {
   }
   if (settings.autostart !== state.settings.autostart) {
     if (!app.isPackaged && settings.autostart) throw new Error(__("err.autostartDev"));
-    app.setLoginItemSettings({ openAtLogin: settings.autostart });
+    setAutostart(settings.autostart);
   }
   if (settings.language !== state.settings.language) { lastMenuKey = null; applyLanguage(settings.language); updates?.refresh(); }
   if (!settings.syncLockScreen) { lockScreenWarning = ''; lockScreenWarningNotified = false; }
@@ -477,6 +479,9 @@ async function saveSettings(input) {
   if (restyled) await restyle();
   return snapshot();
 }
+function setAutostart(enabled) {
+  app.setLoginItemSettings({ openAtLogin: enabled, ...(process.platform === 'win32' ? { args: [AUTOSTART_ARG] } : {}) });
+}
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
 // Windows tray: full-color icon. Both load 1x and 2x explicitly so packaged (asar) builds stay sharp on HiDPI screens.
 function trayIcon() {
@@ -487,7 +492,7 @@ function trayIcon() {
   return image;
 }
 function syncTray() {
-  if (!state.settings.showTrayIcon) {
+  if (!state.settings.showTrayIcon && !backgroundStartup) {
     clearInterval(spinTimer);
     trayWindow?.hide();
     tray?.destroy(); tray = null; lastMenuKey = null;
@@ -554,6 +559,11 @@ function updateTray({ force = true } = {}) {
 }
 // Bring the window back. Also ends a desktop preview, so the apps hidden by it return behind Scenelet.
 async function reveal() {
+  if (backgroundStartup) {
+    backgroundStartup = false;
+    syncTray();
+    if (process.platform === 'darwin') await app.dock?.show();
+  }
   trayWindow?.hide();
   const ending = desktopPeek.restore(); // clears the preview flag before our own focus event can re-enter
   if (win.isMinimized()) win.restore(); win.show(); win.focus();
@@ -661,14 +671,22 @@ async function servePhoto(request) {
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (win) void reveal(); });
+  app.on('second-instance', (_event, argv) => { if (win && !argv.includes(AUTOSTART_ARG)) void reveal(); });
   // macOS: clicking the Dock icon brings the window back (and ends a desktop preview).
-  app.on('activate', () => { if (win && !smoke) void reveal(); });
+  app.on('activate', () => { if (win && !smoke && startupReady) void reveal(); });
   app.whenReady().then(async () => {
     storePath = path.join(app.getPath('userData'), 'library.json'); cachePath = path.join(app.getPath('userData'), 'wallpapers');
     await fs.mkdir(cachePath, { recursive: true });
     if (process.platform === 'win32') app.setAppUserModelId('studio.framewall.desktop');
     if (!smoke) { const loaded = await libraryStore.loadLibrary(storePath); recovery = loaded.recovery; if (loaded.data) state = { ...state, ...loaded.data, settings: core.restoreSettings(loaded.data.settings) }; }
+    backgroundStartup = !smoke && (process.argv.includes(AUTOSTART_ARG)
+      || (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin));
+    if (backgroundStartup && process.platform === 'darwin') app.dock?.hide();
+    // Upgrade the old Windows login entry (without arguments), but respect an OS-disabled entry.
+    if (!smoke && app.isPackaged && process.platform === 'win32' && state.settings.autostart) {
+      const login = app.getLoginItemSettings();
+      if (login.openAtLogin && login.executableWillLaunchAtLogin) setAutostart(true);
+    }
     thumbnailPath = path.join(app.getPath('userData'), 'thumbnails');
     await fs.mkdir(thumbnailPath, { recursive: true });
     applyLanguage();
@@ -678,7 +696,7 @@ else {
     powerMonitor.on('resume', () => void rotationTick());
     // Keep preview proportions current when displays are connected, rotated or resized.
     for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(event, () => publish());
-    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke, backgroundColor: '#f5f5f0', title: i18n.t('app.title'), icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    win = new BrowserWindow({ width: 1440, height: 960, minWidth: 980, minHeight: 700, show: !smoke && !backgroundStartup, backgroundColor: '#f5f5f0', title: i18n.t('app.title'), icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (event, url) => { if (url !== win.webContents.getURL()) event.preventDefault(); });
     win.on('close', handleMainClose);
@@ -692,6 +710,7 @@ else {
     if (recovery || (state.settings.rotation && previousDeadline !== state.nextRotationAt)) await save();
     updates.start();
     if (dev) await win.loadURL('http://127.0.0.1:5173'); else await win.loadFile(path.join(__dirname, '../dist/index.html'));
+    startupReady = true;
     if (smoke) {
       try {
         await require('./smoke.cjs')({ app, win, indexFiles, setNativeWallpaper, snapshot, run, connect });

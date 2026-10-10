@@ -77,7 +77,7 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
             onClick={() => onChange({ showTrayIcon: !settings.showTrayIcon })}><span/></button>
         </div>}
         {toggles.map(({ field, key }) => <div className="row" key={field}>
-          <strong>{t(key)}</strong>
+          <div><strong>{t(key)}</strong>{field === 'autostart' && <small>{t('settings.autostartDesc')}</small>}</div>
           <button className={`toggle${settings[field] ? ' on' : ''}`} role="switch" aria-label={t(key)} aria-checked={!!settings[field]} disabled={busy} onClick={() => onChange({ [field]: !settings[field] })}><span/></button>
         </div>)}
         <div className="row">

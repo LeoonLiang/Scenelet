@@ -202,6 +202,7 @@ const zh = {
   'settings.showTrayIcon': '显示系统托盘图标',
   'settings.showTrayIconDesc': '隐藏后，关闭窗口会退出应用。',
   'settings.autostart': '开机启动',
+  'settings.autostartDesc': '登录后在菜单栏或托盘中静默运行，不打开主界面。',
   'settings.minimizeToTray': '关闭窗口后留在托盘',
   'settings.credit': '壁纸署名',
   'settings.creditStyle.none': '无署名',

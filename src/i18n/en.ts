@@ -204,6 +204,7 @@ const en: Messages = {
   'settings.showTrayIcon': 'Show system tray icon',
   'settings.showTrayIconDesc': 'When hidden, closing the window quits the app.',
   'settings.autostart': 'Open at login',
+  'settings.autostartDesc': 'Start quietly in the menu bar or system tray without opening the main window.',
   'settings.minimizeToTray': 'Keep running in the tray when closed',
   'settings.credit': 'Photographer credit',
   'settings.creditStyle.none': 'None',
