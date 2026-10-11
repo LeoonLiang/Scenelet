@@ -480,7 +480,17 @@ async function saveSettings(input) {
   return snapshot();
 }
 function setAutostart(enabled) {
-  app.setLoginItemSettings({ openAtLogin: enabled, ...(process.platform === 'win32' ? { args: [AUTOSTART_ARG] } : {}) });
+  if (process.platform !== 'win32') return app.setLoginItemSettings({ openAtLogin: enabled });
+  const items = windowsLoginItems();
+  // Reuse existing names, including the old electron.app.Electron entry, so it
+  // cannot launch a second instance without the background-start argument.
+  for (const name of items.length ? items.map(item => item.name) : ['studio.framewall.desktop']) {
+    app.setLoginItemSettings({ openAtLogin: enabled, name, path: process.execPath, args: [AUTOSTART_ARG] });
+  }
+}
+function windowsLoginItems() {
+  return app.getLoginItemSettings({ path: process.execPath, args: [AUTOSTART_ARG] }).launchItems.filter(item =>
+    item.scope === 'user' && path.win32.normalize(item.path).toLowerCase() === path.win32.normalize(process.execPath).toLowerCase());
 }
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.
 // Windows tray: full-color icon. Both load 1x and 2x explicitly so packaged (asar) builds stay sharp on HiDPI screens.
@@ -682,10 +692,14 @@ else {
     backgroundStartup = !smoke && (process.argv.includes(AUTOSTART_ARG)
       || (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin));
     if (backgroundStartup && process.platform === 'darwin') app.dock?.hide();
-    // Upgrade the old Windows login entry (without arguments), but respect an OS-disabled entry.
+    // openAtLogin only checks the current registry name/arguments and can miss
+    // older names. Migrate the actual entries in place, respecting OS-disabled items.
     if (!smoke && app.isPackaged && process.platform === 'win32' && state.settings.autostart) {
-      const login = app.getLoginItemSettings();
-      if (login.openAtLogin && login.executableWillLaunchAtLogin) setAutostart(true);
+      for (const item of windowsLoginItems()) {
+        if (item.enabled && !item.args.includes(AUTOSTART_ARG)) {
+          app.setLoginItemSettings({ openAtLogin: true, name: item.name, path: process.execPath, args: [...item.args, AUTOSTART_ARG] });
+        }
+      }
     }
     thumbnailPath = path.join(app.getPath('userData'), 'thumbnails');
     await fs.mkdir(thumbnailPath, { recursive: true });

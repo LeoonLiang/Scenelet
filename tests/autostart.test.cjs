@@ -17,7 +17,7 @@ async function boot(t, { platform = 'win32', argv = [], login = {}, settings = {
   const app = Object.assign(new EventEmitter(), {
     isPackaged: packaged, getPath: () => dir, setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, getPreferredSystemLanguages: () => ['en'],
-    getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false, executableWillLaunchAtLogin: false, ...login }),
+    getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false, executableWillLaunchAtLogin: false, launchItems: [], ...login }),
     setLoginItemSettings: value => registrations.push(JSON.parse(JSON.stringify(value))),
     whenReady: () => ({ then(fn) { app.ready = Promise.resolve().then(fn); return app.ready; } }),
     dock: { visible: true, hide() { this.visible = false; }, async show() { this.visible = true; } },
@@ -99,7 +99,7 @@ for (const platform of ['win32', 'darwin']) {
     await h.saveSettings({ ...h.snapshot().settings, autostart: true });
     await h.saveSettings({ ...h.snapshot().settings, autostart: false });
     assert.deepEqual(h.registrations, platform === 'win32'
-      ? [{ openAtLogin: true, args: ['--autostart'] }, { openAtLogin: false, args: ['--autostart'] }]
+      ? [{ openAtLogin: true, name: 'studio.framewall.desktop', path: process.execPath, args: ['--autostart'] }, { openAtLogin: false, name: 'studio.framewall.desktop', path: process.execPath, args: ['--autostart'] }]
       : [{ openAtLogin: true }, { openAtLogin: false }]);
   });
 }
@@ -115,10 +115,32 @@ test('a second login-start instance does not reveal an already running app', asy
 });
 
 test('Windows upgrades the existing enabled login entry without re-enabling an OS-disabled entry', async t => {
-  const enabled = await boot(t, { settings: { autostart: true }, login: { openAtLogin: true, executableWillLaunchAtLogin: true } });
-  assert.deepEqual(enabled.registrations, [{ openAtLogin: true, args: ['--autostart'] }]);
-  const disabled = await boot(t, { settings: { autostart: true }, login: { openAtLogin: true, executableWillLaunchAtLogin: false } });
+  const item = { name: 'electron.app.Electron', path: process.execPath, args: [], scope: 'user', enabled: true };
+  // The old registry name makes openAtLogin false even though Windows launches it.
+  const login = { openAtLogin: false, executableWillLaunchAtLogin: true, launchItems: [item] };
+  const enabled = await boot(t, { settings: { autostart: true }, login });
+  assert.deepEqual(enabled.registrations, [{ openAtLogin: true, name: item.name, path: process.execPath, args: ['--autostart'] }]);
+  const disabled = await boot(t, { settings: { autostart: true }, login: { ...login, launchItems: [{ ...item, enabled: false }] } });
   assert.deepEqual(disabled.registrations, []);
-  const dev = await boot(t, { packaged: false, settings: { autostart: true }, login: { openAtLogin: true, executableWillLaunchAtLogin: true } });
+  const dev = await boot(t, { packaged: false, settings: { autostart: true }, login });
   assert.deepEqual(dev.registrations, []);
+});
+
+test('Windows migration skips current, machine-wide and unrelated entries and preserves existing arguments', async t => {
+  const item = { name: 'electron.app.Electron', path: process.execPath, args: ['--existing'], scope: 'user', enabled: true };
+  const h = await boot(t, { settings: { autostart: true }, login: { launchItems: [
+    item,
+    { ...item, name: 'current', args: ['--autostart'] },
+    { ...item, name: 'machine', scope: 'machine' },
+    { ...item, name: 'other-app', path: 'C:\\Other\\Other.exe' },
+  ] } });
+  assert.deepEqual(h.registrations, [{ openAtLogin: true, name: item.name, path: process.execPath, args: ['--existing', '--autostart'] }]);
+});
+
+test('Windows autostart toggle updates existing names without leaving an old foreground launch behind', async t => {
+  const items = ['electron.app.Electron', 'studio.framewall.desktop'].map(name => ({ name, path: process.execPath, args: [], scope: 'user', enabled: true }));
+  const h = await boot(t, { login: { launchItems: items } });
+  await h.saveSettings({ ...h.snapshot().settings, autostart: true });
+  await h.saveSettings({ ...h.snapshot().settings, autostart: false });
+  assert.deepEqual(h.registrations, [true, false].flatMap(openAtLogin => items.map(({ name }) => ({ openAtLogin, name, path: process.execPath, args: ['--autostart'] }))));
 });
