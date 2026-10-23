@@ -4,19 +4,24 @@ const { createHash } = require('node:crypto');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const core = require('./update-core.cjs');
+const { createStallTimeout } = require('./stall-timeout.cjs');
 const { t } = require('./i18n.cjs');
 
-async function downloadReleaseAsset({ asset, release, directory, onProgress = () => {}, signal, fetchImpl = fetch }) {
+const STALL_TIMEOUT = 2 * 60 * 1000;
+const METADATA_TIMEOUT = 30 * 1000;
+
+async function downloadReleaseAsset({ asset, release, directory, onProgress = () => {}, signal, fetchImpl = fetch, stallTimeout = STALL_TIMEOUT }) {
   if (!/^Scenelet-\d+\.\d+\.\d+-(?:macos|windows)-(?:x64|arm64)-(?:installer\.dmg|portable\.zip)$/.test(asset.name)
     || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 2 * 1024 ** 3) throw new Error(t('update.badAsset'));
   const url = core.trustedReleaseUrl(asset.browser_download_url);
-  const timeout = AbortSignal.timeout(15 * 60 * 1000);
-  const downloadSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  // The installer may take arbitrarily long on a slow link; only a gap with no data means it is stuck.
+  const stall = createStallTimeout(stallTimeout, 'Download stalled');
+  const combined = (...signals) => AbortSignal.any(signals.filter(Boolean));
   let checksum = /^sha256:([a-f0-9]{64})$/i.exec(asset.digest || '')?.[1].toLowerCase();
   if (!checksum) {
     const manifest = release.assets.find(item => item.name === 'SHA256SUMS.txt');
     if (!manifest) throw new Error(t('update.noChecksum'));
-    const response = await fetchImpl(core.trustedReleaseUrl(manifest.browser_download_url), { signal: downloadSignal });
+    const response = await fetchImpl(core.trustedReleaseUrl(manifest.browser_download_url), { signal: combined(signal, AbortSignal.timeout(METADATA_TIMEOUT)) });
     if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
     const lines = (await response.text()).split(/\r?\n/);
     for (const line of lines) {
@@ -35,9 +40,13 @@ async function downloadReleaseAsset({ asset, release, directory, onProgress = ()
   let received = 0, previousPercent = -1;
   const hash = createHash('sha256');
   try {
+    stall.touch();
+    const downloadSignal = combined(signal, stall.signal);
     const response = await fetchImpl(url, { signal: downloadSignal });
     if (!response.ok || !response.body) throw new Error(`GitHub HTTP ${response.status}`);
+    stall.touch();
     const progress = new Transform({ transform(chunk, encoding, callback) {
+      stall.touch();
       received += chunk.length;
       if (received > asset.size) { callback(new Error(t('update.badDownload'))); return; }
       hash.update(chunk);
@@ -51,7 +60,10 @@ async function downloadReleaseAsset({ asset, release, directory, onProgress = ()
     await fs.promises.rename(partial, file);
     onProgress(100);
     return file;
-  } finally { await fs.promises.rm(temporary, { recursive: true, force: true }); }
+  } catch (error) {
+    if (stall.aborted()) throw new Error(t('update.stalled'));
+    throw error;
+  } finally { stall.clear(); await fs.promises.rm(temporary, { recursive: true, force: true }); }
 }
 
 module.exports = { downloadReleaseAsset };

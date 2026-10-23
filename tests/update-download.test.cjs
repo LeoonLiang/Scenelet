@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { setTimeout: sleep } = require('node:timers/promises');
 const { downloadReleaseAsset } = require('../electron/update-download.cjs');
 
 const body = Buffer.from('Scenelet installer fixture');
@@ -64,6 +65,32 @@ test('interrupted downloads are cleaned up and can be retried', async t => {
   assert.deepEqual(await fs.readdir(dir), []);
   const file = await downloadReleaseAsset({ asset, release: { assets: [asset] }, directory: dir, fetchImpl: async () => new Response(body) });
   assert.deepEqual(await fs.readFile(file), body);
+});
+
+test('slow downloads keep running while data keeps arriving', async t => {
+  const dir = await directory(t);
+  const parts = Array.from({ length: 7 }, (_, index) => body.subarray(index * 4, index * 4 + 4)).filter(part => part.length);
+  const stream = new ReadableStream({
+    async pull(controller) {
+      if (!parts.length) { controller.close(); return; }
+      await sleep(100);
+      controller.enqueue(parts.shift());
+    },
+  });
+  // The transfer takes longer than stallTimeout, but never pauses that long.
+  const file = await downloadReleaseAsset({ asset, release: { assets: [asset] }, directory: dir, stallTimeout: 500,
+    fetchImpl: async () => new Response(stream),
+  });
+  assert.deepEqual(await fs.readFile(file), body);
+});
+
+test('a download that stops receiving data fails instead of hanging', async t => {
+  const dir = await directory(t);
+  const stream = new ReadableStream({ start(controller) { controller.enqueue(body.subarray(0, 4)); } });
+  await assert.rejects(downloadReleaseAsset({ asset, release: { assets: [asset] }, directory: dir, stallTimeout: 150,
+    fetchImpl: async () => new Response(stream),
+  }));
+  assert.deepEqual(await fs.readdir(dir), []);
 });
 
 test('a new download removes abandoned partials after app termination and preserves other files', async t => {

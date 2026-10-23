@@ -11,6 +11,7 @@ const rotationClock = require('./rotation-clock.cjs');
 const wallpaper = require('./native-wallpaper.cjs').createWallpaperService({ run, platform: process.platform });
 const diagnostics = require('./diagnostics.cjs');
 const { withRetry, isTransient } = require('./retry.cjs');
+const { createStallTimeout } = require('./stall-timeout.cjs');
 const updateCore = require('./update-core.cjs');
 const trayStatus = require('./tray-status.cjs');
 const i18n = require('./i18n.cjs');
@@ -267,20 +268,35 @@ async function photoFile(p) {
   await apiRequest(p.downloadLocation);
   const url = core.imageUrl(p.raw);
   url.searchParams.set('w', quality); url.searchParams.set('q', '90'); url.searchParams.set('fm', 'jpg'); url.searchParams.set('fit', 'max');
-  let response;
+  let response, touchStall = () => {}, clearStall = () => {};
   const requestId = Symbol();
-  try { response = await withRetry(async () => { const result = await fetch(url, { signal: AbortSignal.timeout(60000), redirect: 'error' }); if (result.status === 408 || result.status >= 500) { await result.body?.cancel(); const error = new Error(__('err.downloadHttp', { status: result.status, target: `images.unsplash.com${url.pathname}` })); error.status = result.status; throw error; } return result; }, { onRetry: ({ retry, total, delay }) => progress(requestId, __('retry.download', { seconds: delay / 1000, retry, total })) }); }
+  try {
+    response = await withRetry(async () => {
+      // A slow image may take minutes; only a long gap without data means it is stuck.
+      const stall = createStallTimeout(60000, __('diag.timeout'));
+      stall.touch();
+      try {
+        const result = await fetch(url, { signal: stall.signal, redirect: 'error' });
+        if (result.status === 408 || result.status >= 500) { await result.body?.cancel(); const error = new Error(__('err.downloadHttp', { status: result.status, target: `images.unsplash.com${url.pathname}` })); error.status = result.status; throw error; }
+        touchStall = stall.touch; clearStall = stall.clear;
+        stall.touch();
+        return result;
+      } catch (error) { stall.clear(); throw error; }
+    }, { onRetry: ({ retry, total, delay }) => progress(requestId, __('retry.download', { seconds: delay / 1000, retry, total })) });
+  }
   catch (error) { if (error.status || error.cause?.status) throw error; throw new Error(diagnostics.networkError(error, 'images.unsplash.com' + url.pathname, key)); }
   finally { progress(requestId, ''); }
-  if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(__('err.downloadBad', { status: response.status, target: `images.unsplash.com${url.pathname}`, type: response.headers.get('content-type') || __('err.notProvided') }));
-  if (Number(response.headers.get('content-length')) > 50 * 1024 * 1024) throw new Error(__("err.tooLarge"));
-  const chunks = []; let size = 0;
-  setStage('download', { received: 0, total: Number(response.headers.get('content-length')) || 0 });
-  for await (const chunk of response.body) { size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error(__("err.tooLarge")); chunks.push(chunk); setStage('download', { received: size }); }
-  const bytes = Buffer.concat(chunks);
-  if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error(__("err.badImage"));
-  await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
-  return file;
+  try {
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(__('err.downloadBad', { status: response.status, target: `images.unsplash.com${url.pathname}`, type: response.headers.get('content-type') || __('err.notProvided') }));
+    if (Number(response.headers.get('content-length')) > 50 * 1024 * 1024) throw new Error(__("err.tooLarge"));
+    const chunks = []; let size = 0;
+    setStage('download', { received: 0, total: Number(response.headers.get('content-length')) || 0 });
+    for await (const chunk of response.body) { touchStall(); size += chunk.length; if (size > 50 * 1024 * 1024) throw new Error(__("err.tooLarge")); chunks.push(chunk); setStage('download', { received: size }); }
+    const bytes = Buffer.concat(chunks);
+    if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error(__("err.badImage"));
+    await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
+    return file;
+  } finally { clearStall(); }
 }
 // Unsplash wallpapers get a credited copy; the downloaded original stays untouched for "download".
 // Any failure falls back to the original so a credit never blocks a wallpaper change.
