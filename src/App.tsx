@@ -273,7 +273,7 @@ export default function App() {
         filters={<><FilterControls filters={filters} setFilters={setFilters} busy={busy} interval={intervalState} className="source-filters"/>{primaryScreen && <button className="text-button screen-recommend" disabled={busy} onClick={() => setFilters(s => ({ ...s, orientation: primaryScreen.width / primaryScreen.height > 1.1 ? 'landscape' : primaryScreen.width / primaryScreen.height < .9 ? 'portrait' : 'squarish', minWidth: [3840, 2560, 1920].find(w => w <= primaryScreen.width) || 0 }))}>{t('screen.recommend')}</button>}</>}
         onBrowse={() => browse()} onStart={() => void chooseSource()} onImport={() => void importPhotos()} onOpenFavorites={() => setPage('favorites')}/>}
       </>}/>;
-    if (page === 'settings') return <SettingsPage screen={primaryScreen} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
+    if (page === 'settings') return <SettingsPage screen={primaryScreen} wallpaperWidth={state.wallpaperWidth} onFeedback={feedback} settings={state.settings} platform={state.platform} busy={busy || !!changing} cache={cache} theme={theme} setTheme={setTheme}
       header={<PageHeader title={t('nav.settings')}/>} keyPanel={keyPanel}
       downloadDirectory={state.downloadDirectory}
       onChooseDownloadDirectory={() => { if (desktop()) void action(t('settings.changeDownloadDirectory'), async () => { setState(await api!.chooseDownloadDirectory()); }); }}
@@ -316,7 +316,7 @@ export default function App() {
       </div>
       <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
         onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}
-        onPeek={() => { if (desktop()) void api!.showDesktop().catch(e => report(t('bar.peek'), e)); }}/>
+        onLink={link} onPeek={() => { if (desktop()) void api!.showDesktop().catch(e => report(t('bar.peek'), e)); }}/>
     </main>
     <input type="file" multiple accept="image/*" className="hidden" ref={inputFile} onChange={e => void webImport(e.target.files)}/>
     {importText !== null && <ImportDialog initialText={importText} api={api}

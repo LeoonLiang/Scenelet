@@ -69,6 +69,7 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
           <button className="button secondary" disabled={busy || demo} onClick={onDownload}><ArrowDownToLine size={15}/>{t('preview.download')}</button>
           {photo.source === 'unsplash' && <button className="button secondary" disabled={busy} title={t('preview.shareHint')} onClick={onShare}><Share2 size={15}/>{t('preview.share')}</button>}
         </div>
+        {photo.link && <button className="button secondary full-width preview-original" title={t('preview.viewOriginalHint')} onClick={() => onLink(photo.link)}><ExternalLink size={15}/>{t('preview.viewOriginal')}</button>}
         <p className="helper">{t('preview.help')}</p>
         {(photo.source === 'local' || photo.imported) && <div className="library-actions">
           {photo.missing && <p role="status">{t('library.missing')}</p>}
@@ -76,7 +77,6 @@ export default function PreviewDialog({ photo, liked, busy, onClose, onSetWallpa
           {onRemove && <button className="button secondary" disabled={busy} onClick={onRemove}>{t('library.remove')}</button>}
           <p className="helper">{t('library.removeHelp')}</p>
         </div>}
-        {photo.link && <button className="text-button preview-credit" onClick={() => onLink(photo.link)}>{t('preview.viewOnUnsplash')} <ExternalLink size={12}/></button>}
       </div>
     </section>
   </div>;

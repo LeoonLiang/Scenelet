@@ -8,7 +8,7 @@ import { languages, t, type MessageKey } from '../i18n';
 import { creditCss, creditText, styles as creditStyles } from '../lib/credit';
 
 type Props = {
-  screen?: { width: number; height: number }; onFeedback: () => void;
+  screen?: { width: number; height: number }; wallpaperWidth?: number; onFeedback: () => void;
   settings: Settings; platform: string; busy: boolean; cache: { bytes: number; files: number };
   downloadDirectory?: string; onChooseDownloadDirectory: () => void;
   theme: Theme; setTheme: (t: Theme) => void;
@@ -18,8 +18,10 @@ type Props = {
 
 const toggles = [{ field: 'autostart', key: 'settings.autostart' }, { field: 'minimizeToTray', key: 'settings.minimizeToTray' }] as const;
 const themes: { id: Theme; key: MessageKey }[] = [{ id: 'system', key: 'settings.theme.system' }, { id: 'light', key: 'settings.theme.light' }, { id: 'dark', key: 'settings.theme.dark' }];
+const resolutionName = (width: number) => width >= 7680 ? '8K' : width >= 6016 ? '6K' : width >= 5120 ? '5K' : width >= 3840 ? '4K' : width >= 2560 ? '2K' : '1080P';
 
-export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, onFeedback, downloadDirectory, onChooseDownloadDirectory }: Props) {
+export default function SettingsPage({ settings, platform, busy, cache, theme, setTheme, header, keyPanel, onChange, onClearCache, onLink, screen, wallpaperWidth, onFeedback, downloadDirectory, onChooseDownloadDirectory }: Props) {
+  const currentWidth = wallpaperWidth ?? (settings.quality === 'auto' ? undefined : Number(settings.quality));
   return <div className="settings-page">
     {header}
     <section className="panel">
@@ -30,11 +32,12 @@ export default function SettingsPage({ settings, platform, busy, cache, theme, s
           options={(['fill', 'fit', 'stretch', 'center'] as const).map(value => ({ value, label: t(`settings.fit.${value}`) }))}/>
         <SelectField label={t('settings.quality')} value={settings.quality} disabled={busy}
           onValueChange={quality => onChange({ quality })}
-          options={[{ value: 'auto', label: t('screen.auto') }, ...['1920', '2560', '3840'].map(value => ({ value, label: `${value} px` }))]}/>
+          options={[{ value: 'auto', label: t('screen.auto') }, ...[1920, 2560, 3840].map(value => ({ value: String(value), label: `${value} px · ${resolutionName(value)}` }))]}/>
         <SelectField label={t('settings.cacheLimit')} value={String(settings.cacheLimit)} disabled={busy}
           onValueChange={value => onChange({ cacheLimit: Number(value) })}
           options={[256, 512, 1024, 2048].map(value => ({ value: String(value), label: `${value} MB` }))}/>
       </div>
+      {currentWidth !== undefined && <p className="helper">{t('settings.qualityCurrent', { width: currentWidth, name: resolutionName(currentWidth) })}</p>}
       {screen && <p className="helper">{t('screen.hint', screen)}</p>}
       <div className="rows">
         <div className="row download-directory-row">

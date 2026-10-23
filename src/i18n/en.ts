@@ -189,6 +189,7 @@ const en: Messages = {
   'settings.fit.stretch': 'Stretch',
   'settings.fit.center': 'Center',
   'settings.quality': 'Download resolution',
+  'settings.qualityCurrent': 'Current download width: {width} px ({name})',
   'settings.cacheLimit': 'Cache limit',
   'settings.appearance': 'Appearance',
   'settings.theme.system': 'System',
@@ -321,7 +322,8 @@ const en: Messages = {
   'preview.share': 'Share',
   "preview.shareHint": "Copy this photo’s link and instructions for importing it",
   'preview.help': 'Favorited photos can be used as a source by choosing Favorites on the Wallpaper page.',
-  'preview.viewOnUnsplash': 'View on Unsplash',
+  'preview.viewOriginal': 'View original',
+  'preview.viewOriginalHint': 'Open this photo’s original Unsplash page in your browser',
 
   'error.failed': '{step} failed',
   'error.close': 'Dismiss error',

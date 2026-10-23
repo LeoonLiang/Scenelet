@@ -187,6 +187,7 @@ const zh = {
   'settings.fit.stretch': '拉伸',
   'settings.fit.center': '居中',
   'settings.quality': '下载分辨率',
+  'settings.qualityCurrent': '当前下载宽度：{width} px（{name}）',
   'settings.cacheLimit': '缓存上限',
   'settings.appearance': '外观',
   'settings.theme.system': '跟随系统',
@@ -319,7 +320,8 @@ const zh = {
   'preview.share': '分享',
   "preview.shareHint": "复制这张壁纸的链接和导入说明",
   'preview.help': '收藏后，可以在换壁纸页选「我的收藏」作为来源。',
-  'preview.viewOnUnsplash': '在 Unsplash 查看',
+  'preview.viewOriginal': '查看原图',
+  'preview.viewOriginalHint': '在浏览器中打开这张照片的 Unsplash 原网页',
 
   'error.failed': '{step}失败',
   'error.close': '关闭错误',
