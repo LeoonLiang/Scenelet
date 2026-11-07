@@ -34,7 +34,9 @@ function applyLanguage(pref = state.settings.language) {
 protocol.registerSchemesAsPrivileged([{ scheme: 'framewall', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 let win, trayWindow, trayMenu, tray, timer, key = '', closing = false, applying = false, selecting = false;
 // Wallpaper change in progress: { stage: 'select' | 'download' | 'apply', received, total, note, origin }.
-let change = null, flash = null, flashTimer, spinTimer, spinTick = 0, lastError = '', lastMenuKey = null, lastChangeText = '';
+let change = null, flash = null, flashTimer, spinTimer, spinTick = 0, lastError = '', lastMenuKey = null, lastChangeState = '';
+// The change that can be cancelled from the window or the tray.
+let activeChange = null;
 let state = { photos: [], favorites: [], playlists: [], history: [], current: null, settings: { ...core.defaults } };
 let storePath, cachePath, thumbnailPath;
 let recovery = '', indexing = false, clockRunning = false, previousQueue = null;
@@ -71,17 +73,41 @@ function publish(error) {
   sendToWindows('framewall:update', { ...snapshot(), error });
   updateTray();
 }
+function cancelError() { return Object.assign(new Error(__('err.changeCancelled')), { cancelled: true }); }
+function changeCancelled() { return !!activeChange?.cancelled; }
+function throwIfCancelled() { if (changeCancelled()) throw cancelError(); }
+function cancelSignal(timeout) {
+  const signal = activeChange?.controller?.signal;
+  return signal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, signal]) : timeout;
+}
+// Stops before the wallpaper is applied; once the desktop is being set the change finishes normally.
+function requestCancel() {
+  if (!activeChange || activeChange.cancelled || !change || change.stage === 'apply') return false;
+  activeChange.cancelled = true;
+  activeChange.controller?.abort(cancelError());
+  change = { ...change, note: '', cancelling: true };
+  refreshChange();
+  return true;
+}
+// A user cancellation resolves with the unchanged snapshot so the window can skip its success notice.
+function settleCancellation(promise) {
+  return Promise.resolve(promise).catch(error => {
+    if (!error.cancelled) throw error;
+    return { ...snapshot(), changeCancelled: true };
+  });
+}
 async function apiRequest(url, apiKey = key) {
   const id = Symbol(); const previousKey = key;
-  try { return await withRetry(() => apiRequestOnce(url, apiKey), { shouldContinue: () => key === previousKey, onRetry: ({ retry, total, delay }) => progress(id, __('retry.connect', { seconds: delay / 1000, retry, total })) }); }
+  try { return await withRetry(() => apiRequestOnce(url, apiKey), { shouldContinue: () => key === previousKey && !changeCancelled(), onRetry: ({ retry, total, delay }) => progress(id, __('retry.connect', { seconds: delay / 1000, retry, total })) }); }
   finally { progress(id, ''); }
 }
 async function apiRequestOnce(url, apiKey = key) {
   if (!apiKey) throw new Error(__("err.noKey"));
+  throwIfCancelled();
   const target = core.apiUrl(String(url));
   let response;
-  try { response = await fetch(target, { headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' }, signal: AbortSignal.timeout(30000), redirect: 'error' }); }
-  catch (error) { const failure = new Error(diagnostics.networkError(error, target.pathname, apiKey)); failure.retryable = isTransient(error); throw failure; }
+  try { response = await fetch(target, { headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' }, signal: cancelSignal(AbortSignal.timeout(30000)), redirect: 'error' }); }
+  catch (error) { if (changeCancelled()) throw cancelError(); const failure = new Error(diagnostics.networkError(error, target.pathname, apiKey)); failure.retryable = isTransient(error); throw failure; }
   if (!response.ok) {
     let details = '';
     try { const body = await response.json(); details = Array.isArray(body.errors) ? body.errors.join('；') : String(body.error || body.message || ''); } catch {}
@@ -284,15 +310,15 @@ async function photoFile(p) {
       const stall = createStallTimeout(60000, __('diag.timeout'));
       stall.touch();
       try {
-        const result = await fetch(url, { signal: stall.signal, redirect: 'error' });
+        const result = await fetch(url, { signal: cancelSignal(stall.signal), redirect: 'error' });
         if (result.status === 408 || result.status >= 500) { await result.body?.cancel(); const error = new Error(__('err.downloadHttp', { status: result.status, target: `images.unsplash.com${url.pathname}` })); error.status = result.status; throw error; }
         touchStall = stall.touch; clearStall = stall.clear;
         stall.touch();
         return result;
       } catch (error) { stall.clear(); throw error; }
-    }, { onRetry: ({ retry, total, delay }) => progress(requestId, __('retry.download', { seconds: delay / 1000, retry, total })) });
+    }, { shouldContinue: () => !changeCancelled(), onRetry: ({ retry, total, delay }) => progress(requestId, __('retry.download', { seconds: delay / 1000, retry, total })) });
   }
-  catch (error) { if (error.status || error.cause?.status) throw error; throw new Error(diagnostics.networkError(error, 'images.unsplash.com' + url.pathname, key)); }
+  catch (error) { if (changeCancelled()) throw cancelError(); if (error.status || error.cause?.status) throw error; throw new Error(diagnostics.networkError(error, 'images.unsplash.com' + url.pathname, key)); }
   finally { progress(requestId, ''); }
   try {
     if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) throw new Error(__('err.downloadBad', { status: response.status, target: `images.unsplash.com${url.pathname}`, type: response.headers.get('content-type') || __('err.notProvided') }));
@@ -304,7 +330,8 @@ async function photoFile(p) {
     if (nativeImage.createFromBuffer(bytes).isEmpty()) throw new Error(__("err.badImage"));
     await fs.writeFile(file + '.part', bytes); await fs.rename(file + '.part', file);
     return file;
-  } finally { clearStall(); }
+  } catch (error) { if (changeCancelled()) throw cancelError(); throw error; }
+  finally { clearStall(); }
 }
 // Unsplash wallpapers get a credited copy; the downloaded original stays untouched for "download".
 // Any failure falls back to the original so a credit never blocks a wallpaper change.
@@ -327,11 +354,14 @@ async function apply(id, stillCurrent, navigatingHistory = false) {
   if (applying) throw new Error(__("err.applying"));
   applying = true;
   try {
+    throwIfCancelled();
     const p = getPhoto(id);
     const original = await photoFile(p);
+    throwIfCancelled();
     setStage('apply');
     const file = await creditedFile(p, original);
     if (stillCurrent && !stillCurrent()) throw Object.assign(new Error(__("err.applyCancelled")), { cancelled: true });
+    throwIfCancelled();
     const result = await wallpaper.apply(file, state.settings, async () => {
       // Commit desktop success before the optional lock-screen operation can stall.
       if (!navigatingHistory) previousQueue = null;
@@ -380,6 +410,8 @@ function rotationPool(settings = state.settings) {
 async function tracked(origin, work) {
   if (change || selecting || applying) throw new Error(__("err.busy"));
   clearTimeout(flashTimer); flash = null;
+  const token = { cancelled: false, controller: typeof AbortController === 'function' ? new AbortController() : null };
+  activeChange = token;
   change = { stage: 'select', received: 0, total: 0, note: '', origin };
   startSpinner(); refreshChange();
   try {
@@ -387,11 +419,12 @@ async function tracked(origin, work) {
     lastError = ''; finishChange(lockScreenWarning ? 'warning' : 'ok', origin);
     return result;
   } catch (error) {
-    // A change cancelled by the user (paused / source edited) is not a failure worth flagging.
-    if (error.cancelled) finishChange(null, origin);
-    else { lastError = diagnostics.redact(error.message || __('err.failed'), key); finishChange('error', origin); }
+    // A change cancelled by the user (paused / source edited / Cancel) is not a failure worth flagging.
+    if (error.cancelled || token.cancelled) { finishChange(null, origin); throw error.cancelled ? error : cancelError(); }
+    lastError = diagnostics.redact(error.message || __('err.failed'), key); finishChange('error', origin);
     throw error;
   } finally {
+    if (activeChange === token) activeChange = null;
     if (restylePending) { restylePending = false; setImmediate(() => void restyle()); }
   }
 }
@@ -430,9 +463,10 @@ function notifyResult(result) {
   notice.show();
 }
 function refreshChange() {
-  const text = trayStatus.statusText(change);
-  if (text !== lastChangeText) sendToWindows('framewall:changing', text);
-  lastChangeText = text;
+  const payload = { text: trayStatus.statusText(change), cancelling: !!change?.cancelling, cancellable: !!change && change.stage !== 'apply' };
+  const state = JSON.stringify(payload);
+  if (state !== lastChangeState) sendToWindows('framewall:changing', payload);
+  lastChangeState = state;
   updateTray({ force: false });
 }
 async function next(automatic = false, origin = automatic ? 'auto' : 'window') {
@@ -448,6 +482,7 @@ async function pickAndApply(automatic) {
       const stillCurrent = () => !!key && state.settings.rotationSource === 'online' && (!automatic || state.settings.rotation) && signature === JSON.stringify([state.settings.onlineSource, state.settings.orientation, state.settings.minWidth]);
       const source = await resolveRandomSource(settings.onlineSource);
       const result = await core.fetchRandomMatching(source, settings, apiRequest, state.current?.id, state.history.map(h => h.id));
+      throwIfCancelled();
       if (!stillCurrent()) throw Object.assign(new Error(__("err.selectCancelled")), { cancelled: true });
       known.set(result.photo.id, result.photo);
       return await apply(result.photo.id, stillCurrent);
@@ -464,7 +499,7 @@ async function pickAndApply(automatic) {
 async function rotationTick() {
   if (clockRunning || indexing || !state.settings.rotation || !state.nextRotationAt || Date.now() < state.nextRotationAt || applying || selecting || change) return;
   clockRunning = true;
-  try { await next(true); } catch (error) { publish(error.message); }
+  try { await next(true); } catch (error) { if (!error.cancelled) publish(error.message); }
   finally {
     state.nextRotationAt = state.settings.rotation ? Date.now() + state.settings.interval * 60000 : null;
     try { await save(); publish(); } catch (error) { publish(error.message); }
@@ -586,7 +621,8 @@ function updateTray({ force = true } = {}) {
   trayMenu = Menu.buildFromTemplate([
     ...(status ? [{ label: status, enabled: !!(lastError || lockScreenWarning) && !change, click: () => void reveal() }, { type: 'separator' }] : []),
     { label: __('tray.open'), click: () => void reveal() },
-    { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => publish(e.message)) },
+    { label: change ? __('tray.changing') : __('tray.next'), enabled: !change, click: () => next(false, 'tray').catch(e => { if (!e.cancelled) publish(e.message); }) },
+    ...(change && change.stage !== 'apply' && !change.cancelling ? [{ label: __('tray.cancel'), click: () => requestCancel() }] : []),
     { label: __('tray.peek'), click: () => desktopPeek.show().catch(e => publish(e.message)) },
     { label: __('tray.rotation'), type: 'checkbox', checked: state.settings.rotation, click: item => { saveSettings({ ...state.settings, rotation: item.checked }).catch(e => publish(e.message)); } },
     { type: 'separator' },
@@ -631,7 +667,7 @@ function registerIPC() {
     credential: () => key,
     disconnect: async () => { await fs.rm(path.join(app.getPath('userData'), 'credential.bin'), { force: true }); key = ''; topicIds.clear(); if (state.settings.rotationSource === 'online') { state.settings.rotation = false; await save(); schedule(); } publish(); return snapshot(); },
     import: importFiles,
-    'rescan-library': rescanLibrary, 'remove-photo': removePhoto, 'relink-photo': relinkPhoto, previous: previousWallpaper,
+    'rescan-library': rescanLibrary, 'remove-photo': removePhoto, 'relink-photo': relinkPhoto, previous: () => settleCancellation(previousWallpaper()),
     'dismiss-recovery': async () => { recovery = ''; return snapshot(); },
     favorite: async ({ id }) => { const p = getPhoto(id); remember(p); state.favorites = state.favorites.includes(id) ? state.favorites.filter(f => f !== id) : [...state.favorites, id]; await save(); publish(); return snapshot(); },
     playlist: async ({ action, id, name, photoId }) => {
@@ -644,7 +680,8 @@ function registerIPC() {
     },
     settings: saveSettings,
     'choose-download-directory': chooseDownloadDirectory,
-    wallpaper: ({ id }) => tracked('window', () => apply(id)), next: () => next(),
+    wallpaper: ({ id }) => settleCancellation(tracked('window', () => apply(id))), next: () => settleCancellation(next()),
+    'cancel-change': () => requestCancel(),
     download: async ({ id }) => { const p = getPhoto(id); const result = await dialog.showSaveDialog(win, { defaultPath: path.join(downloadDirectory(), `${p.id}${p.source === 'local' ? path.extname(p.localPath) : '.jpg'}`), filters: [{ name: __('import.filter'), extensions: p.source === 'local' ? [path.extname(p.localPath).slice(1)] : ['jpg'] }] }); if (result.canceled) return { canceled: true }; const file = await photoFile(p); if (path.resolve(file) !== path.resolve(result.filePath)) await fs.copyFile(file, result.filePath); await trimCache(); return { canceled: false }; },
     cache: cacheInfo,
     'clear-cache': async () => { for (const file of await fs.readdir(cachePath)) { const target = path.join(cachePath, file); if (target !== state.current?.file && target !== state.current?.original) await fs.unlink(target); } return cacheInfo(); },

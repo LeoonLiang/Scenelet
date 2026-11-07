@@ -11,6 +11,11 @@ test('each change stage has a readable status line', () => {
   assert.equal(statusText({ stage: 'apply' }), '正在设置壁纸…');
   assert.equal(statusText({ stage: 'download', note: '图片下载暂时失败，2 秒后重试（2/3）…' }), '图片下载暂时失败，2 秒后重试（2/3）…');
 });
+test('a cancel request replaces the stage with cancel progress', () => {
+  assert.equal(statusText({ stage: 'download', received: 3, total: 4, cancelling: true }), '正在取消换图…');
+  assert.equal(menuBarTitle({ stage: 'download', received: 3, total: 4, cancelling: true }, 0), `${spinner[0]} 取消中`);
+  assert.notEqual(menuKey({ stage: 'select' }), menuKey({ stage: 'select', cancelling: true }));
+});
 test('menu-bar title animates while changing and flashes the result', () => {
   assert.equal(menuBarTitle({ stage: 'select' }, 0), `${spinner[0]} 选图`);
   assert.equal(menuBarTitle({ stage: 'select' }, spinner.length + 1), `${spinner[1]} 选图`);

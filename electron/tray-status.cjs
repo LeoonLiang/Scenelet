@@ -18,6 +18,7 @@ function amount(change) {
 // Long form for the tray menu, tooltip and the app window.
 function statusText(change) {
   if (!change) return '';
+  if (change.cancelling) return `${t('stage.cancelling')}…`;
   if (change.note) return change.note;
   const extra = amount(change);
   return `${t(stageKey(change.stage))}${extra ? ' ' + extra : ''}…`;
@@ -25,8 +26,8 @@ function statusText(change) {
 // Short form shown next to the macOS menu-bar icon. Empty string hides it.
 function menuBarTitle(change, tick = 0, flash = null) {
   if (change) {
-    const label = t(change.note ? 'stage.retry.short' : `${stageKey(change.stage)}.short`);
-    const extra = change.note ? '' : amount(change);
+    const label = t(change.cancelling ? 'stage.cancelling.short' : change.note ? 'stage.retry.short' : `${stageKey(change.stage)}.short`);
+    const extra = change.cancelling || change.note ? '' : amount(change);
     return `${spinner[tick % spinner.length]} ${label}${extra ? ' ' + extra : ''}`;
   }
   if (flash === 'ok') return '✓';
@@ -46,6 +47,6 @@ function firstLine(message) { return String(message || '').split('\n')[0]; }
 function menuKey(change) {
   if (!change) return '';
   const pct = percent(change);
-  return [change.stage, change.note || '', pct === null ? '' : Math.floor(pct / 10)].join('|');
+  return [change.stage, change.cancelling ? 'cancelling' : '', change.note || '', pct === null ? '' : Math.floor(pct / 10)].join('|');
 }
 module.exports = { spinner, truncate, percent, statusText, menuBarTitle, tooltip, firstLine, menuKey };

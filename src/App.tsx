@@ -41,6 +41,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [changing, setChanging] = useState('');
+  const [changeCancellable, setChangeCancellable] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [customInterval, setCustomInterval] = useState(false);
   const [customMinutes, setCustomMinutes] = useState('60');
   // "Don't change" in the interval list: keep one wallpaper, no rotation.
@@ -76,7 +78,7 @@ export default function App() {
       api.credential().then(setKeyInput).catch(e => report(t('step.credential'), e));
       const stopUpdate = api.onUpdate(s => { setState(s); if (s.error) report(t('step.auto'), s.error); });
       const stopProgress = api.onProgress(setProgress);
-      const stopChanging = api.onChanging(setChanging);
+      const stopChanging = api.onChanging(status => { setChanging(status.text); setChangeCancellable(status.cancellable); setCancelling(status.cancelling); });
       return () => { stopUpdate(); stopProgress(); stopChanging(); };
     }
     const saved = read<Partial<AppState>>('framewall-preview', {});
@@ -182,6 +184,7 @@ export default function App() {
       setSourceExpanded(false);
       localStorage.setItem('framewall-source-configured', 'true');
       const applied = await api!.next(); setState(applied);
+      if (applied.changeCancelled) { setDraft(normalized); setPage('home'); return; }
       if (!keep) setState(await api!.settings({ ...applied.settings, rotation: true }));
       setDraft(normalized);
       if (online) setSavedSources(old => [normalized, ...old.filter(x => x.kind !== normalized.kind || x.value !== normalized.value)].slice(0, 5));
@@ -192,7 +195,12 @@ export default function App() {
     try { const normalized = normalizeSource(s); setBrowseSource(normalized); setPage(s.kind === 'favorites' ? 'favorites' : s.kind === 'library' ? 'library' : 'browse'); }
     catch (e) { report(t('step.browseSource'), e); }
   }
-  async function next() { if (desktop()) await action(t('step.next'), async () => { const applied = await api!.next(); setState(applied); setNotice(applied.lockScreenWarning ? '' : t('notice.next')); }); }
+  async function next() { if (desktop()) await action(t('step.next'), async () => { const applied = await api!.next(); setState(applied); if (!applied.changeCancelled) setNotice(applied.lockScreenWarning ? '' : t('notice.next')); }); }
+  async function cancelChange() {
+    if (!api || !changing || cancelling) return;
+    try { if (await api.cancelChange()) setNotice(t('notice.changeCancelled')); }
+    catch (e) { report(t('step.cancel'), e); }
+  }
   async function favorite(p: Photo) {
     if (p.source === 'demo') { report(t('step.favorite'), t('err.demoFavorite')); return; }
     if (api) await action(t('step.favorite'), async () => { setState(await api.favorite({ id: p.id })); });
@@ -255,7 +263,7 @@ export default function App() {
   }
   const batchPanel = <PhotoBatch batch={candidates.batch} loading={candidates.loading} busy={busy || !!changing} source={activeSource} favorites={state.favorites} compact={isTray} screen={primaryScreen} fit={state.settings.fit} platform={state.platform} wallpaperWidth={state.wallpaperWidth}
     onSelect={id => void candidates.select(id)} onRefresh={() => void candidates.refresh()} onSource={editSource} onFavorite={p => void favorite(p)} onLink={link}
-    onApply={p => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: p.id }); setState(applied); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
+    onApply={p => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: p.id }); setState(applied); if (!applied.changeCancelled) setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
     onDownload={p => { if (desktop()) void action(t('step.download'), async () => { const result = await api!.download({ id: p.id }); if (!result.canceled) setNotice(t('notice.photoSaved')); }); }}/>;
 
   function content() {
@@ -298,7 +306,7 @@ export default function App() {
 
   if (isTray) return <main className="tray-shell">
     {batchPanel}
-    {changing && <div className="tray-status" role="status">{changing}</div>}
+    {changing && <div className="tray-status" role="status"><span>{changing}</span>{changeCancellable && <button className="text-button" disabled={cancelling} onClick={() => void cancelChange()}>{t(cancelling ? 'bar.cancelling' : 'bar.cancel')}</button>}</div>}
     {failure && <ErrorPanel failure={failure} onClose={() => setFailure(null)} onCopy={() => copyFailure(failure)}/>}
     {notice && <Toast message={notice} onClose={() => setNotice('')}/>}
   </main>;
@@ -314,7 +322,7 @@ export default function App() {
         {state.recovery && <div className="recovery-notice" role="status"><span>{t(state.recovery === 'backup' ? 'backup.recovered' : 'backup.unavailable')}</span><button className="text-button" onClick={() => { if (api) void action(t('backup.dismiss'), async () => setState(await api.dismissRecovery())); }}>{t('backup.dismiss')}</button></div>}
         {content()}
       </div>
-      <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
+      <WallpaperBar nextRotationAt={state.nextRotationAt} canPrevious={state.previousAvailable ?? state.history.some(h => h.id !== state.current?.id)} onPrevious={() => { if (desktop()) void action(t('history.previous'), async () => setState(await api!.previous())); }} current={current} hasCurrent={!!state.current} source={activeSource} changing={changing} cancelling={cancelling} cancellable={changeCancellable} onCancel={() => void cancelChange()} busy={busy} rotation={state.settings.rotation} interval={state.settings.interval}
         onToggleRotation={() => void changeSettings({ rotation: !state.settings.rotation })} onNext={() => void next()} onChooseSource={() => setPage('home')}
         onLink={link} onPeek={() => { if (desktop()) void api!.showDesktop().catch(e => report(t('bar.peek'), e)); }}/>
     </main>
@@ -335,7 +343,7 @@ export default function App() {
       onRelink={api ? () => void action(t('library.relink'), async () => { const updated = await api.relinkPhoto({ id: selected.id }); setState(updated); setSelected(null); if (updated.importFailed) setNotice(t('notice.importSkipped', { count: updated.importFailed })); }) : undefined}
       photo={selected} liked={state.favorites.includes(selected.id)} busy={busy} onClose={() => setSelected(null)} onLink={link}
       onFavorite={() => void favorite(selected)} onShare={() => sharePhoto(selected)}
-      onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: selected.id }); setState(applied); setSelected(null); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
+      onSetWallpaper={() => { if (desktop()) void action(t('step.setWallpaper'), async () => { const applied = await api!.wallpaper({ id: selected.id }); setState(applied); if (applied.changeCancelled) return; setSelected(null); setNotice(applied.lockScreenWarning ? '' : t('notice.wallpaperSet')); }); }}
       onDownload={() => { if (desktop()) void action(t('step.download'), async () => { const r = await api!.download({ id: selected.id }); if (!r.canceled) setNotice(t('notice.photoSaved')); }); }}/>}
     {notice && <Toast message={notice} onClose={() => setNotice('')}/>}
   </div>;

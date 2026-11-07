@@ -66,7 +66,7 @@ async function harness(t, failures = [2], lockGate) {
         schedule();
       },
       manual: () => tracked('window', () => apply('local-a')),
-      next, saveSettings, snapshot, rotationTick, previousWallpaper, removePhoto,
+      next, saveSettings, snapshot, rotationTick, previousWallpaper, removePhoto, cancelChange: requestCancel, settleCancellation,
       menu: () => trayMenu,
       expire() { state.nextRotationAt = Date.now() - 1000; },
       add(photo) { state.photos.push(photo); known.set(photo.id, photo); },
@@ -97,6 +97,21 @@ for (const origin of ['manual', 'tray', 'auto']) test(`${origin}: lock-screen fa
   const recovered = await h.next(true);
   assert.equal(recovered.lockScreenWarning, '');
   assert.equal(recovered.history.length, 2);
+});
+
+test('cancelling before the desktop is set keeps the current wallpaper and history', async t => {
+  const h = await harness(t, []);
+  const pending = h.settleCancellation(h.manual());
+  assert.ok(h.getMenu().some(item => item.label === '取消换图'));
+  assert.equal(h.cancelChange(), true);
+  assert.ok(!h.getMenu().some(item => item.label === '取消换图'));
+  const result = await pending;
+  assert.equal(result.changeCancelled, true);
+  assert.equal(h.snapshot().current, null);
+  assert.equal(h.snapshot().history.length, 0);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.cancelChange(), false);
+  assert.equal((await h.manual()).current.id, 'local-a');
 });
 
 test('desktop failure leaves current/history unchanged and never syncs lock screen', async t => {

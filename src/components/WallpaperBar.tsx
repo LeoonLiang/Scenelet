@@ -1,16 +1,16 @@
-import { ExternalLink, LoaderCircle, Monitor, Pause, Play, Shuffle } from 'lucide-react';
+import { ExternalLink, LoaderCircle, Monitor, Pause, Play, Shuffle, X } from 'lucide-react';
 import type { Photo } from '../types';
 import { intervalLabel } from '../lib/sources';
 import { t } from '../i18n';
 
 type Props = {
-  current?: Photo; hasCurrent: boolean; source: string; changing: string; busy: boolean;
+  current?: Photo; hasCurrent: boolean; source: string; changing: string; cancelling: boolean; cancellable: boolean; busy: boolean;
   rotation: boolean; interval: number;
-  nextRotationAt?: number | null; canPrevious: boolean; onPrevious: () => void;
+  nextRotationAt?: number | null; canPrevious: boolean; onPrevious: () => void; onCancel: () => void;
   onToggleRotation: () => void; onNext: () => void; onChooseSource: () => void; onPeek: () => void; onLink: (url: string) => void;
 };
 
-export default function WallpaperBar({ current, hasCurrent, source, changing, busy, rotation, interval, onToggleRotation, onNext, onChooseSource, nextRotationAt, canPrevious, onPrevious, onPeek, onLink }: Props) {
+export default function WallpaperBar({ current, hasCurrent, source, changing, cancelling, cancellable, busy, rotation, interval, onToggleRotation, onNext, onChooseSource, nextRotationAt, canPrevious, onPrevious, onCancel, onPeek, onLink }: Props) {
   const every = intervalLabel(interval);
   const originalLink = current?.link;
   return <footer className="wallpaper-bar">
@@ -27,6 +27,7 @@ export default function WallpaperBar({ current, hasCurrent, source, changing, bu
       <button className="button secondary" title={t('bar.peekHint')} onClick={onPeek}><Monitor size={15}/>{t('bar.peek')}</button>
       <button className="button secondary" disabled={busy || !!changing || !canPrevious} onClick={onPrevious}>{t('history.previous')}</button>
       <button className="icon-btn" aria-label={t(rotation ? 'bar.pause' : 'bar.resume')} title={t(rotation ? 'bar.pause' : 'bar.resume')} disabled={busy || !hasCurrent} onClick={onToggleRotation}>{rotation ? <Pause size={16}/> : <Play size={16}/>}</button>
+      {changing && cancellable && <button className="button secondary cancel-change" disabled={cancelling} onClick={onCancel}>{cancelling ? <LoaderCircle className="spin" size={15}/> : <X size={15}/>}{t(cancelling ? 'bar.cancelling' : 'bar.cancel')}</button>}
       <button className="button primary" disabled={busy || !!changing} onClick={hasCurrent ? onNext : onChooseSource}>{busy || changing ? <LoaderCircle className="spin" size={15}/> : <Shuffle size={15}/>}{t(changing ? 'bar.changing' : hasCurrent ? 'bar.next' : 'home.chooseSource')}</button>
     </div>
   </footer>;
