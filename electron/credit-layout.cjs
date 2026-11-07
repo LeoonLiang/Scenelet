@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const creditStyles = require('./credit-styles.json');
 
 // Bump when the drawing changes so cached credited copies are regenerated.
-const VERSION = 2;
+const VERSION = 3;
 const FONT_RATIO = 0.0125; // text height relative to the primary screen height
 const MARGIN_RATIO = 0.022; // gap to the visible edge relative to the primary screen height
 const WINDOWS_TASKBAR_DIP = 72; // leave extra clearance even when workArea reports only 48 DIP
@@ -99,7 +99,7 @@ function creditText(style, author) {
 // Stable name for the credited copy: changes when the source, text or layout changes.
 function creditFileName(photoId, source, text, layout) {
   const hash = crypto.createHash('sha256').update(JSON.stringify([VERSION, source, text, layout])).digest('hex').slice(0, 16);
-  return `${photoId}-credit-${hash}.jpg`;
+  return `${photoId}-credit-${hash}.png`;
 }
 
 module.exports = { creditLayout, creditFileName, creditStyle, creditText, safeRect, drawScale, outputSize, physical };

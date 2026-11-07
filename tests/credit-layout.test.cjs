@@ -134,7 +134,7 @@ test('falls back to a default screen and keeps text on the image', () => {
 test('credited copy name changes with text and layout, and is a safe file name', () => {
   const layout = creditLayout({ width: 6000, height: 4000 }, [mac], 'fill');
   const a = creditFileName('abc_123', 'src', 'Photo by A on Unsplash', layout);
-  assert.match(a, /^abc_123-credit-[0-9a-f]{16}\.jpg$/);
+  assert.match(a, /^abc_123-credit-[0-9a-f]{16}\.png$/);
   assert.equal(a, creditFileName('abc_123', 'src', 'Photo by A on Unsplash', layout));
   assert.notEqual(a, creditFileName('abc_123', 'src', 'Photo by B on Unsplash', layout));
   assert.notEqual(a, creditFileName('abc_123', 'src', 'Photo by A on Unsplash', { ...layout, right: layout.right - 1 }));

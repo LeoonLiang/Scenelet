@@ -685,7 +685,7 @@ function registerPhotos() {
 async function servePhoto(request) {
   const url = new URL(request.url), id = decodeURIComponent(url.pathname.slice(1));
   // Downloaded Unsplash originals, only for the credit renderer.
-  const cached = url.hostname === 'cache' && /^[a-zA-Z0-9_-]{1,140}\.jpg$/.test(id) ? path.join(cachePath, id) : '';
+  const cached = url.hostname === 'cache' && /^[a-zA-Z0-9_-]{1,140}\.(?:jpg|png)$/.test(id) ? path.join(cachePath, id) : '';
   let file = cached || imported.get(id);
   if (!file || !['photo', 'thumb', 'cache'].includes(url.hostname)) return new Response('Not found', { status: 404 });
   try {
