@@ -8,16 +8,16 @@ const { EventEmitter } = require('node:events');
 const { createRequire } = require('node:module');
 
 // Run the real main-process startup and settings handlers with OS APIs isolated.
-async function boot(t, { platform = 'win32', argv = [], login = {}, settings = {}, packaged = true } = {}) {
+async function boot(t, { platform = 'win32', argv = [], login = {}, settings = {}, packaged = true, execPath = process.execPath } = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scenelet-startup-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   await fs.writeFile(path.join(dir, 'library.json'), JSON.stringify({ photos: [], favorites: [], settings }));
   const entry = path.resolve(__dirname, '../electron/main.cjs'), realRequire = createRequire(entry);
-  const windows = [], trays = [], registrations = [], errors = [];
+  const windows = [], trays = [], registrations = [], errors = [], loginCalls = [];
   const app = Object.assign(new EventEmitter(), {
     isPackaged: packaged, getPath: () => dir, setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, getPreferredSystemLanguages: () => ['en'],
-    getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false, executableWillLaunchAtLogin: false, launchItems: [], ...login }),
+    getLoginItemSettings: value => { loginCalls.push(value === undefined ? null : JSON.parse(JSON.stringify(value))); return { openAtLogin: false, wasOpenedAtLogin: false, executableWillLaunchAtLogin: false, launchItems: [], ...login }; },
     setLoginItemSettings: value => registrations.push(JSON.parse(JSON.stringify(value))),
     whenReady: () => ({ then(fn) { app.ready = Promise.resolve().then(fn); return app.ready; } }),
     dock: { visible: true, hide() { this.visible = false; }, async show() { this.visible = true; } },
@@ -53,14 +53,14 @@ async function boot(t, { platform = 'win32', argv = [], login = {}, settings = {
       if (name === './updater.cjs') return () => ({ start() {}, stop() {}, refresh() {} });
       return realRequire(name);
     },
-    process: { ...process, platform, argv: ['Scenelet', ...argv] }, console, Buffer, URL,
+    process: { ...process, execPath, platform, argv: ['Scenelet', ...argv] }, console, Buffer, URL,
     __dirname: path.dirname(entry), module: { exports: {} },
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
   };
   vm.runInNewContext(await fs.readFile(entry, 'utf8') + '\nmodule.exports = { snapshot, saveSettings };', context, { filename: entry });
   await app.ready;
   assert.deepEqual(errors, [], 'startup completes without an error dialog');
-  return { app, windows, trays, registrations, ...context.module.exports };
+  return { app, windows, trays, registrations, loginCalls, ...context.module.exports };
 }
 
 for (const platform of ['win32', 'darwin']) {
@@ -124,6 +124,15 @@ test('Windows upgrades the existing enabled login entry without re-enabling an O
   assert.deepEqual(disabled.registrations, []);
   const dev = await boot(t, { packaged: false, settings: { autostart: true }, login });
   assert.deepEqual(dev.registrations, []);
+});
+
+test('Windows finds the login entry when the install path contains spaces', async t => {
+  // Electron parses the lookup path as a command line; unquoted "C:\Program Files\..." is truncated to "C:\Program".
+  const execPath = 'C:\\Program Files\\Scenelet\\Scenelet.exe';
+  const item = { name: 'electron.app.Electron', path: execPath, args: [], scope: 'user', enabled: true };
+  const h = await boot(t, { execPath, settings: { autostart: true }, login: { executableWillLaunchAtLogin: true, launchItems: [item] } });
+  assert.deepEqual(h.loginCalls[0].path, `"${execPath}"`, 'lookup path is quoted for Chromium parsing');
+  assert.deepEqual(h.registrations, [{ openAtLogin: true, name: item.name, path: execPath, args: ['--autostart'] }]);
 });
 
 test('Windows migration skips current, machine-wide and unrelated entries and preserves existing arguments', async t => {

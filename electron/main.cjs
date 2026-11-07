@@ -60,7 +60,8 @@ async function save() {
   return saveQueue;
 }
 function snapshot() {
-  return { ...state, wallpaperWidth: Number(wallpaperQuality()), downloadDirectory: downloadDirectory(), previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
+  const quality = wallpaperQuality();
+  return { ...state, wallpaperWidth: quality === 'original' ? undefined : Number(quality), downloadDirectory: downloadDirectory(), previousAvailable: previousQueue !== null ? previousQueue.some(id => known.has(id)) : state.history.some(h => h.id !== state.current?.id && known.has(h.id)), recovery, lockScreenWarning, connected: !!key, desktop: true, platform: process.platform, screens: screen.getAllDisplays().map(d => ({ id: d.id, width: Math.round(d.size.width * (d.scaleFactor || 1)), height: Math.round(d.size.height * (d.scaleFactor || 1)), primary: d.id === screen.getPrimaryDisplay().id })) };
 }
 function sendToWindows(channel, value) {
   for (const window of [win, trayWindow]) if (window && !window.isDestroyed()) window.webContents.send(channel, value);
@@ -265,9 +266,16 @@ async function photoFile(p) {
   try { await fs.access(file); return file; } catch {}
   // A wallpaper selection counts as a download; never download on gallery hover.
   setStage('download');
-  await apiRequest(p.downloadLocation);
-  const url = core.imageUrl(p.raw);
-  url.searchParams.set('w', quality); url.searchParams.set('q', '90'); url.searchParams.set('fm', 'jpg'); url.searchParams.set('fit', 'max');
+  const download = await apiRequest(p.downloadLocation);
+  let url;
+  if (quality === 'original') {
+    // The download endpoint points at the untouched upload; drop any rendition parameters.
+    try { url = core.imageUrl(download.data?.url); } catch { url = core.imageUrl(p.raw); }
+    for (const param of ['w', 'h', 'q', 'fm', 'fit', 'crop', 'rect']) url.searchParams.delete(param);
+  } else {
+    url = core.imageUrl(p.raw);
+    url.searchParams.set('w', quality); url.searchParams.set('q', '90'); url.searchParams.set('fm', 'jpg'); url.searchParams.set('fit', 'max');
+  }
   let response, touchStall = () => {}, clearStall = () => {};
   const requestId = Symbol();
   try {
@@ -505,7 +513,11 @@ function setAutostart(enabled) {
   }
 }
 function windowsLoginItems() {
-  return app.getLoginItemSettings({ path: process.execPath, args: [AUTOSTART_ARG] }).launchItems.filter(item =>
+  // Electron parses `path` with Chromium's command-line parser, which cuts an
+  // unquoted path at the first space (C:\Program Files\... becomes C:\Program),
+  // so the installed entry would never match. Quote it exactly as Windows does.
+  const lookup = `"${process.execPath}"`;
+  return app.getLoginItemSettings({ path: lookup, args: [AUTOSTART_ARG] }).launchItems.filter(item =>
     item.scope === 'user' && path.win32.normalize(item.path).toLowerCase() === path.win32.normalize(process.execPath).toLowerCase());
 }
 // macOS menu bar: black + alpha template image; the system tints it for light/dark menu bars and the highlighted state.

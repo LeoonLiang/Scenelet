@@ -39,11 +39,13 @@ test('pasted Unsplash photo links in the common forms are recognised', () => {
   assert.equal(parseShared(undefined), null);
 });
 
-test('old installs on the former 2560 px default move to automatic quality once', () => {
-  assert.equal(restoreSettings({ quality: '2560' }).quality, 'auto');
+test('old installs on former quality defaults move to the original once', () => {
+  assert.equal(restoreSettings({ quality: '2560' }).quality, 'original');
+  assert.equal(restoreSettings({ quality: 'auto', settingsRevision: 1 }).quality, 'original');
   assert.equal(restoreSettings({ quality: '3840' }).quality, '3840', 'a non-default choice is kept');
   const saved = normalizeSettings({ quality: '2560' });
-  assert.equal(saved.settingsRevision, 1);
+  assert.equal(saved.settingsRevision, 2);
   assert.equal(restoreSettings(saved).quality, '2560', 'a choice made after the migration is kept');
-  assert.equal(restoreSettings({}).quality, 'auto');
+  assert.equal(restoreSettings({ quality: 'auto', settingsRevision: 2 }).quality, 'auto', 'automatic quality stays selectable');
+  assert.equal(restoreSettings({}).quality, 'original');
 });
